@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Main courante journalière</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Main courante journalière</h1>
+        <p>Planification des commandes et checklist de vérification</p>
+      </div>
+      <button id="displayModeToggle" class="secondary-btn" type="button">Mode smartphone</button>
+    </header>
+
+    <main id="appLayout" class="layout desktop-layout">
+      <section class="card">
+        <h2>Informations du jour</h2>
+        <form id="dayForm" class="grid-form">
+          <label>
+            Date
+            <input id="dayDate" type="date" required />
+          </label>
+          <label>
+            Responsable
+            <input id="dayOwner" type="text" placeholder="Nom du responsable" required />
+          </label>
+          <label class="full-width">
+            Observations générales
+            <textarea id="dayNotes" rows="3" placeholder="Points importants de la journée"></textarea>
+          </label>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <h2>Planification des commandes</h2>
+          <button id="addPlanningRow" type="button">Ajouter une ligne</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Heure</th>
+                <th>Commande / tâche</th>
+                <th>Secteur</th>
+                <th>Statut</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="planningBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <h2>Checklist Box & secteurs</h2>
+          <button id="resetChecklist" class="secondary-btn" type="button">Réinitialiser</button>
+        </div>
+        <div id="checklistContainer" class="checklist-grid"></div>
+      </section>
+
+      <section class="card">
+        <h2>Suivi</h2>
+        <p id="completionText" class="badge">0 / 0 vérifications réalisées</p>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
