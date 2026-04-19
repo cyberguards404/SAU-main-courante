@@ -2,21 +2,48 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Main courante journalière</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Main courante journaliere</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div id="appLoadWarning" class="card" style="display: none; margin: 1rem">
+      <h2>Chargement incomplet</h2>
+      <p>
+        Les fonctionnalites ne sont pas chargees. Ouvrez l'application via un serveur local
+        (ex: <code>python3 -m http.server 8000</code>) puis accedez a
+        <code>http://127.0.0.1:8000</code>.
+      </p>
+    </div>
+
     <header class="topbar">
       <div>
-        <h1>Main courante journalière</h1>
-        <p>Planification des commandes et checklist de vérification</p>
+        <h1>Main courante journaliere</h1>
+        <p>Planification des commandes et checklist de verification</p>
       </div>
-      <button id="displayModeToggle" class="secondary-btn" type="button">Mode smartphone</button>
+      <div id="serverStatus" class="server-status" title="Statut serveur collaboratif"></div>
+      <div id="activeOperators" class="active-operators"></div>
+      <div class="header-actions">
+        <button id="exportDataBtn" class="secondary-btn" type="button">Exporter JSON</button>
+        <button id="printReportBtn" class="secondary-btn" type="button">Imprimer</button>
+        <button id="displayModeToggle" class="secondary-btn" type="button">Mode smartphone</button>
+      </div>
     </header>
 
+    <nav id="viewTabs" class="view-tabs" aria-label="Navigation principale">
+      <button type="button" data-view-tab="infos">Infos</button>
+      <button type="button" data-view-tab="planning">Admin planification</button>
+      <button type="button" data-view-tab="templates">Templates</button>
+      <button type="button" data-view-tab="checklist">Checklist</button>
+      <button type="button" data-view-tab="photos">Photos</button>
+      <button type="button" data-view-tab="suivi">Suivi</button>
+    </nav>
+
     <main id="appLayout" class="layout desktop-layout">
-      <section class="card">
+      <section class="card view-panel" data-view-panel="infos">
         <h2>Informations du jour</h2>
         <form id="dayForm" class="grid-form">
           <label>
@@ -28,25 +55,28 @@
             <input id="dayOwner" type="text" placeholder="Nom du responsable" required />
           </label>
           <label class="full-width">
-            Observations générales
-            <textarea id="dayNotes" rows="3" placeholder="Points importants de la journée"></textarea>
+            Observations generales
+            <textarea id="dayNotes" rows="3" placeholder="Points importants de la journee"></textarea>
           </label>
         </form>
       </section>
 
-      <section class="card">
+      <section class="card view-panel" data-view-panel="planning">
         <div class="section-header">
-          <h2>Planification des commandes</h2>
+          <h2>Planification des verifications</h2>
           <button id="addPlanningRow" type="button">Ajouter une ligne</button>
         </div>
+        <p class="muted-text">La planification admin se fait par secteur. La structure detaillee vient des Templates.</p>
         <div class="table-wrapper">
           <table>
             <thead>
               <tr>
                 <th>Heure</th>
-                <th>Commande / tâche</th>
                 <th>Secteur</th>
+                <th>Recurrence</th>
+                <th>Infini</th>
                 <th>Statut</th>
+                <th>Validation</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -55,20 +85,258 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card view-panel" data-view-panel="checklist">
         <div class="section-header">
-          <h2>Checklist Box & secteurs</h2>
-          <button id="resetChecklist" class="secondary-btn" type="button">Réinitialiser</button>
+          <h2>Checklist du jour</h2>
         </div>
-        <div id="checklistContainer" class="checklist-grid"></div>
+        <p class="muted-text">Flux operationnel: secteur -> sous-categorie -> sous-sous-categorie.</p>
+
+        <div id="checklistSectorStep" class="checklist-step">
+          <h3>Secteurs</h3>
+          <div id="todaySectorsList" class="selection-list"></div>
+        </div>
+
+        <div id="checklistCategoryStep" class="checklist-step is-hidden">
+          <div class="section-header">
+            <h3 id="selectedSectorTitle">Sous-categories</h3>
+            <button id="backToSectorsBtn" class="secondary-btn" type="button">Retour secteurs</button>
+          </div>
+          <div id="plannedCategoriesList" class="subpart-list"></div>
+
+          <div class="checklist-level-block">
+            <h4>Validation secteur</h4>
+            <div class="inline-actions">
+              <button id="validateSectorBtn" type="button">Valider verification secteur</button>
+            </div>
+            <p id="sectorValidationStatus" class="muted-text">Aucune validation secteur.</p>
+            <label>
+              Commentaires generaux secteur
+              <textarea id="sectorGeneralComment" rows="2" placeholder="Observation generale du secteur"></textarea>
+            </label>
+            <div>
+              <h4>Anomalies secteur</h4>
+              <div id="sectorAnomalies" class="anomaly-list"></div>
+            </div>
+
+            <h4>Signature de validation generale</h4>
+            <form id="signatureMetaForm" class="grid-form">
+              <label>
+                Signataire
+                <input id="signerName" type="text" placeholder="Nom et prenom" />
+              </label>
+              <label>
+                Fonction
+                <input id="signerRole" type="text" placeholder="Ex: Chef de poste" />
+              </label>
+            </form>
+            <p class="muted-text">Signez ci-dessous avant de valider la verification generale.</p>
+            <canvas id="signaturePad" class="signature-pad" width="900" height="260"></canvas>
+            <div class="inline-actions">
+              <button id="saveSignatureBtn" type="button">Enregistrer la signature</button>
+              <button id="clearSignatureBtn" class="secondary-btn" type="button">Effacer</button>
+            </div>
+            <p id="signatureStatus" class="muted-text">Aucune signature enregistree.</p>
+          </div>
+        </div>
+
+        <div id="checklistItemSubcategoryStep" class="checklist-step is-hidden">
+          <div class="section-header">
+            <h3 id="selectedCategoryTitle">Sous-sous-categories</h3>
+            <button id="backToCategoriesBtn" class="secondary-btn" type="button">Retour sous-categories</button>
+          </div>
+          <div class="navigation-tabs">
+            <span class="tabs-label">Sous-categories:</span>
+            <div id="categoriesQuickNav" class="quick-nav-list"></div>
+          </div>
+          <div id="itemSubcategoryList" class="subpart-list"></div>
+          <label>
+            Commentaire sous-categorie
+            <textarea id="categoryComment" rows="2" placeholder="Observation de la sous-categorie"></textarea>
+          </label>
+          <div>
+            <h4>Anomalies sous-categorie</h4>
+            <div id="categoryAnomalies" class="anomaly-list"></div>
+          </div>
+        </div>
+
+        <div id="checklistItemsStep" class="checklist-step is-hidden">
+          <div class="section-header">
+            <h3 id="selectedItemSubcategoryTitle">Items de verification</h3>
+            <button id="backToItemSubcategoriesBtn" class="secondary-btn" type="button">Retour sous-sous-categories</button>
+          </div>
+          <div class="navigation-tabs">
+            <span class="tabs-label">Sous-categories:</span>
+            <div id="itemsCategoriesQuickNav" class="quick-nav-list"></div>
+          </div>
+          <div class="navigation-tabs">
+            <span class="tabs-label">Sous-sous-categories:</span>
+            <div id="itemsSubcategoriesQuickNav" class="quick-nav-list"></div>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Validation</th>
+                  <th>Item</th>
+                  <th>Commentaire</th>
+                  <th>Photo</th>
+                </tr>
+              </thead>
+              <tbody id="subChecklistBody"></tbody>
+            </table>
+          </div>
+          <p id="subChecklistCompletionText" class="badge">0 valide, 0 non valide sur 0</p>
+        </div>
       </section>
 
-      <section class="card">
+      <section class="card view-panel" data-view-panel="templates">
+        <div class="section-header">
+          <h2>Templates de checklist</h2>
+        </div>
+        <p class="muted-text">Organisation generale: secteur -> sous-categorie -> sous-categorie d'item -> checklist precise, avec parametres de planification par secteur.</p>
+
+        <form class="grid-form checklist-editor-form">
+          <label>
+            Secteur
+            <select id="templateSectorSelect"></select>
+          </label>
+          <label>
+            Nom du secteur
+            <input id="templateSectorName" type="text" placeholder="Nom du secteur" />
+          </label>
+          <label>
+            Creer un secteur
+            <div class="inline-actions">
+              <input id="newTemplateSector" type="text" placeholder="Ex: Boxes" />
+              <button id="createTemplateSectorBtn" type="button">Creer</button>
+            </div>
+          </label>
+          <label>
+            Sous-categorie
+            <select id="templateCategorySelect"></select>
+          </label>
+          <label>
+            Nom de la sous-categorie
+            <input id="templateCategoryName" type="text" placeholder="Nom de la sous-categorie" />
+          </label>
+          <label>
+            Creer une sous-categorie
+            <div class="inline-actions">
+              <input id="newTemplateCategory" type="text" placeholder="Ex: Box 1" />
+              <button id="createTemplateCategoryBtn" type="button">Creer</button>
+            </div>
+          </label>
+          <label>
+            Sous-categorie d'item
+            <select id="templateItemSubcategorySelect"></select>
+          </label>
+          <label>
+            Nom sous-categorie d'item
+            <input id="templateItemSubcategoryName" type="text" placeholder="Nom sous-categorie d'item" />
+          </label>
+          <label>
+            Creer une sous-categorie d'item
+            <div class="inline-actions">
+              <input id="newTemplateItemSubcategory" type="text" placeholder="Ex: Acces" />
+              <button id="createTemplateItemSubcategoryBtn" type="button">Creer</button>
+            </div>
+          </label>
+          <label>
+            Heure par defaut secteur
+            <input id="templateDefaultTime" type="time" />
+          </label>
+          <label>
+            Recurrence par defaut secteur
+            <select id="templateDefaultRecurrenceType">
+              <option>Aucune</option>
+              <option>Quotidienne</option>
+              <option>Hebdomadaire</option>
+              <option>Mensuelle</option>
+            </select>
+          </label>
+          <label>
+            Pas par defaut secteur
+            <input id="templateDefaultRecurrenceEvery" type="number" min="1" step="1" value="1" />
+          </label>
+          <label>
+            Recurrence infinie
+            <input id="templateDefaultRecurrenceInfinite" type="checkbox" />
+          </label>
+          <label>
+            Actions template
+            <div class="inline-actions">
+              <button id="duplicateTemplateCategoryBtn" class="secondary-btn" type="button">Dupliquer sous-categorie</button>
+              <button id="duplicateTemplateItemSubcategoryBtn" class="secondary-btn" type="button">Dupliquer sous-categorie d'item</button>
+              <button id="deleteTemplateCategoryBtn" class="secondary-btn" type="button">Supprimer sous-categorie</button>
+              <button id="deleteTemplateItemSubcategoryBtn" class="secondary-btn" type="button">Supprimer sous-categorie d'item</button>
+              <button id="deleteTemplateSectorBtn" class="secondary-btn" type="button">Supprimer secteur</button>
+            </div>
+          </label>
+          <label class="full-width">
+            Ajouter un item au template
+            <div class="inline-actions">
+              <input id="newTemplateItem" type="text" placeholder="Ex: Verifier alarme incendie" />
+              <button id="addTemplateItemBtn" type="button">Ajouter</button>
+            </div>
+          </label>
+        </form>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Item template</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="templateItemsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card view-panel" data-view-panel="photos">
+        <h2>Photos de controle</h2>
+        <label class="file-input">
+          <span>Ajouter une ou plusieurs photos</span>
+          <input id="photoInput" type="file" accept="image/*" capture="environment" multiple />
+        </label>
+        <div id="photoGallery" class="photo-gallery"></div>
+      </section>
+
+      <section class="card view-panel" data-view-panel="suivi">
         <h2>Suivi</h2>
-        <p id="completionText" class="badge">0 / 0 vérifications réalisées</p>
+        <p id="completionText" class="badge">0 / 0 verifications realisees</p>
       </section>
     </main>
 
-    <script src="app.js"></script>
+    <script>
+      window.__SAU_APP_READY = false;
+      window.__SAU_APP_ERROR = "";
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          if (window.__SAU_APP_READY) return;
+          const warning = document.getElementById("appLoadWarning");
+          if (warning) {
+            warning.style.display = "block";
+            if (window.__SAU_APP_ERROR) {
+              const details = document.createElement("p");
+              details.className = "muted-text";
+              details.textContent = `Detail: ${window.__SAU_APP_ERROR}`;
+              warning.appendChild(details);
+            }
+          }
+        }, 1200);
+      });
+    </script>
+    <script type="module">
+      import("./js/main.js")
+        .then(() => {
+          window.__SAU_APP_READY = true;
+        })
+        .catch((error) => {
+          window.__SAU_APP_ERROR = error?.message || String(error);
+          console.error("Echec du chargement de l'app:", error);
+        });
+    </script>
   </body>
 </html>
