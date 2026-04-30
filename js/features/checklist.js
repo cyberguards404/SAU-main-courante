@@ -7,9 +7,9 @@ import {
   getCategoryById,
   getItemSubcategoryById,
   saveState,
-} from "../core/state.js";
-import { dom, escapeHtml } from "../core/dom.js";
-import { getPlannedSectors, getPlanningBySector, validatePlanning } from "./planning.js";
+} from "../core/state.js?v=20260430-7";
+import { dom, escapeHtml } from "../core/dom.js?v=20260430-7";
+import { getPlannedSectors, getPlanningBySector, validatePlanning } from "./planning.js?v=20260430-7";
 
 let rerenderAll = () => {};
 let checklistStep = "sector";

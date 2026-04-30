@@ -19,18 +19,697 @@
       </p>
     </div>
 
+    <section id="authScreen" class="auth-shell">
+      <div class="auth-card">
+        <div>
+          <p class="auth-eyebrow">Plateforme SAU</p>
+          <h1>Connexion</h1>
+          <p class="muted-text">Connectez-vous pour acceder au dashboard Formation, Logistiques et Gestion de crise.</p>
+        </div>
+        <form id="loginForm" class="grid-form auth-form">
+          <label class="full-width">
+            Identifiant
+            <input id="loginUsername" type="text" placeholder="Ex: admin" autocomplete="username" required />
+          </label>
+          <label class="full-width">
+            Mot de passe
+            <input id="loginPassword" type="password" placeholder="Votre mot de passe" autocomplete="current-password" required />
+          </label>
+          <div class="inline-actions full-width">
+            <button type="submit">Se connecter</button>
+          </div>
+        </form>
+        <p id="loginError" class="auth-error is-hidden"></p>
+        <p class="muted-text">Compte initial: admin / admin123</p>
+      </div>
+    </section>
+
+    <div id="appShell" class="is-hidden">
     <header class="topbar">
-      <div>
+      <div class="topbar-left">
+        <button id="dashboardMenuBtn" class="secondary-btn dashboard-menu-btn" type="button" aria-controls="dashboardMenu" aria-expanded="false">MENU</button>
+        <div>
         <h1>Main courante journaliere</h1>
-        <p>Planification des commandes et checklist de verification</p>
+        <p id="appHeaderSubtitle">Plateforme SAU - pilotage Formation, Logistiques et Gestion de crise</p>
+        </div>
       </div>
       <div id="serverStatus" class="server-status" title="Statut serveur collaboratif"></div>
       <div class="header-actions">
+        <span id="userGreeting" class="user-greeting"></span>
         <button id="exportDataBtn" class="secondary-btn" type="button">Exporter JSON</button>
         <button id="printReportBtn" class="secondary-btn" type="button">Imprimer</button>
         <button id="displayModeToggle" class="secondary-btn" type="button">Mode smartphone</button>
+        <button id="logoutBtn" class="secondary-btn" type="button">Deconnexion</button>
       </div>
     </header>
+
+    <nav id="dashboardMenu" class="dashboard-menu is-hidden" aria-label="Fonctions dashboard">
+      <button type="button" data-open-module="dashboard">Dashboard</button>
+      <button type="button" data-open-module="formation">Formation</button>
+      <button type="button" data-open-module="logistiques">Logistiques</button>
+      <button type="button" data-open-module="crise">Gestion de crise</button>
+    </nav>
+
+    <section id="dashboardScreen" class="app-screen active">
+      <div class="dashboard-hero card">
+        <div>
+          <p class="auth-eyebrow">Vue d'ensemble</p>
+          <h2 id="welcomeTitle">Bienvenue</h2>
+          <p class="muted-text">Utilisez MENU en haut a gauche pour ouvrir Formation, Logistiques ou Gestion de crise.</p>
+        </div>
+      </div>
+
+      <section id="userManagementSection" class="card is-hidden">
+        <div class="section-header">
+          <h2>Gestion des utilisateurs</h2>
+        </div>
+        <form id="createUserForm" class="grid-form">
+          <label>
+            Nom complet
+            <input id="createUserFullName" type="text" placeholder="Ex: Marie Dupont" />
+          </label>
+          <label>
+            Identifiant
+            <input id="createUserUsername" type="text" placeholder="Ex: marie.dupont" />
+          </label>
+          <label>
+            Mot de passe initial
+            <input id="createUserPassword" type="password" placeholder="Mot de passe initial" />
+          </label>
+          <label>
+            Role
+            <select id="createUserRole">
+              <option value="apprenant">Apprenant</option>
+              <option value="formateur">Formateur</option>
+              <option value="logistique">Logistique</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <div class="inline-actions full-width">
+            <button id="createUserBtn" type="submit">Creer l'utilisateur</button>
+          </div>
+        </form>
+        <p id="userManagementStatus" class="muted-text">Aucun changement.</p>
+        <div id="usersList" class="commandes-list"></div>
+      </section>
+    </section>
+
+    <section id="formationScreen" class="app-screen is-hidden">
+      <nav id="formationTabs" class="view-tabs" aria-label="Sous-navigation formation">
+        <button type="button" data-formation-tab="learner" class="active">Partie apprenant</button>
+        <button type="button" data-formation-tab="creator">Creation MOOC</button>
+      </nav>
+
+      <section id="formationLearnerPanel" class="formation-panel">
+        <section class="card mooc-hero-card">
+          <div class="mooc-hero-top">
+            <div>
+              <p class="auth-eyebrow">Campus SAU</p>
+              <h2>Plateforme Formation</h2>
+              <p class="muted-text">Parcours structures, chapitres progressifs, quiz integres et suivi de progression en continu.</p>
+            </div>
+            <div class="mooc-filters">
+              <label>
+                Categorie
+                <select id="trainingLearnerCategorySelect">
+                  <option value="">Toutes</option>
+                </select>
+              </label>
+              <label>
+                Chapitre
+                <select id="trainingLearnerChapterSelect">
+                  <option value="">Tous</option>
+                </select>
+              </label>
+              <label>
+                Livre
+                <select id="trainingLearnerCourseSelect">
+                  <option value="">Tous</option>
+                </select>
+              </label>
+              <label>
+                Rechercher
+                <input id="trainingSearchInput" type="text" placeholder="Titre, mot-cle, theme" />
+              </label>
+              <label>
+                Items / page
+                <select id="trainingPageSize">
+                  <option value="4">4</option>
+                  <option value="6" selected>6</option>
+                  <option value="8">8</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="trainingStats" class="dashboard-summary-grid"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <h3>Catalogue</h3>
+          </div>
+          <div id="trainingCatalog" class="module-card-grid"></div>
+          <div class="inline-actions training-pagination">
+            <button id="trainingPrevPageBtn" class="secondary-btn" type="button">Precedent</button>
+            <span id="trainingPageInfo" class="muted-text">Page 1 / 1</span>
+            <button id="trainingNextPageBtn" class="secondary-btn" type="button">Suivant</button>
+          </div>
+        </section>
+
+        <section id="quizPlayer" class="card is-hidden">
+          <div class="section-header">
+            <h2 id="quizCourseTitle">Quiz</h2>
+            <button id="closeQuizBtn" class="secondary-btn" type="button">Fermer</button>
+          </div>
+          <p id="quizProgress" class="muted-text"></p>
+          <div id="quizCaseContext" class="quiz-case-box is-hidden"></div>
+          <h3 id="quizQuestionText"></h3>
+          <div id="quizOptions" class="quiz-options"></div>
+          <p id="quizFeedback" class="muted-text"></p>
+          <div class="inline-actions">
+            <button id="nextQuizQuestionBtn" type="button">Question suivante</button>
+          </div>
+        </section>
+      </section>
+
+      <section id="formationCreatorPanel" class="formation-panel is-hidden">
+        <section id="formationBuilder" class="card is-hidden">
+          <div class="section-header">
+            <h2>Studio Creation MOOC</h2>
+          </div>
+
+          <section class="creator-workspace">
+            <aside class="creator-sidebar">
+              <h3>Structure du MOOC</h3>
+              <p class="muted-text">Creer d'abord categorie, chapitre puis cours. Ensuite editer en grand a droite.</p>
+
+              <form id="createCategoryForm" class="grid-form quick-builder-form">
+                <label class="full-width">
+                  Nouvelle categorie
+                  <input id="newCategoryName" type="text" placeholder="Ex: Urgences vitales" />
+                </label>
+                <div class="inline-actions full-width">
+                  <button type="submit">Ajouter categorie</button>
+                </div>
+              </form>
+
+              <form id="createChapterForm" class="grid-form quick-builder-form">
+                <label class="full-width">
+                  Categorie
+                  <select id="chapterCategorySelect"></select>
+                </label>
+                <label class="full-width">
+                  Nouveau chapitre
+                  <input id="newChapterName" type="text" placeholder="Ex: Evaluation initiale" />
+                </label>
+                <div class="inline-actions full-width">
+                  <button type="submit">Ajouter chapitre</button>
+                </div>
+              </form>
+
+              <form id="createCourseForm" class="grid-form quick-builder-form">
+                <label class="full-width">
+                  Categorie
+                  <select id="courseCategorySelect"></select>
+                </label>
+                <label class="full-width">
+                  Chapitre
+                  <select id="courseChapterSelect"></select>
+                </label>
+                <label class="full-width">
+                  Titre du cours
+                  <input id="newCourseTitle" type="text" placeholder="Ex: Check primaire ABCDE" />
+                </label>
+                <div class="inline-actions full-width">
+                  <button type="submit">Creer le cours</button>
+                </div>
+              </form>
+            </aside>
+
+            <section class="editor-shell editor-shell-wide creator-editor-main">
+              <div class="section-header">
+                <h3>Edition en grand format</h3>
+              </div>
+
+              <nav id="creatorEditorTabs" class="view-tabs creator-editor-tabs" aria-label="Sous-navigation editeur MOOC">
+                <button type="button" data-creator-editor-tab="course" class="active">Cours (blocs)</button>
+                <button type="button" data-creator-editor-tab="quiz">Banque de quiz</button>
+              </nav>
+
+              <section id="creatorCourseEditorPanel">
+                <form id="courseEditorForm" class="grid-form">
+                  <label class="full-width">
+                    Cours a editer
+                    <select id="editorCourseSelect"></select>
+                  </label>
+                  <div class="inline-actions">
+                    <button id="addTextBlockBtn" type="button">Ajouter bloc texte</button>
+                  </div>
+                  <label>
+                    Inserer un quiz deja cree
+                    <select id="editorQuizQuestionSelect"></select>
+                  </label>
+                  <div class="inline-actions">
+                    <button id="addQuizBlockBtn" type="button">Inserer bloc quiz</button>
+                  </div>
+                </form>
+                <div id="editorBlocksList" class="document-blocks"></div>
+              </section>
+
+              <section id="creatorQuizEditorPanel" class="is-hidden">
+                <form id="createQuestionForm" class="grid-form">
+              <label>
+                Cours cible
+                <select id="questionCourseSelect"></select>
+              </label>
+              <label>
+                Bonne reponse
+                <select id="questionCorrectIndex">
+                  <option value="0">Reponse 1</option>
+                  <option value="1">Reponse 2</option>
+                  <option value="2">Reponse 3</option>
+                  <option value="3">Reponse 4</option>
+                </select>
+              </label>
+              <label>
+                Type
+                <select id="newQuestionType">
+                  <option value="standard">Question standard</option>
+                  <option value="clinical">Cas clinique</option>
+                </select>
+              </label>
+              <label class="full-width">
+                Contexte du cas clinique (optionnel)
+                <textarea id="newQuestionCase" rows="3"></textarea>
+              </label>
+              <label class="full-width">
+                Question
+                <input id="newQuestionText" type="text" placeholder="Ex: Quel est l'objectif principal de l'etape A ?" />
+              </label>
+              <label>
+                Reponse 1
+                <input id="newOption1" type="text" />
+              </label>
+              <label>
+                Reponse 2
+                <input id="newOption2" type="text" />
+              </label>
+              <label>
+                Reponse 3
+                <input id="newOption3" type="text" />
+              </label>
+              <label>
+                Reponse 4
+                <input id="newOption4" type="text" />
+              </label>
+              <label class="full-width">
+                Explication (optionnel)
+                <textarea id="newQuestionExplanation" rows="2"></textarea>
+              </label>
+              <div class="inline-actions full-width">
+                <button type="submit">Ajouter question</button>
+              </div>
+            </form>
+              </section>
+            </section>
+          </section>
+
+          <p id="formationBuilderStatus" class="muted-text">Aucune modification.</p>
+        </section>
+      </section>
+
+      <section id="trainingReader" class="card is-hidden training-reader-overlay">
+        <div class="section-header">
+          <h3 id="trainingReaderTitle">Lecture</h3>
+          <button id="closeTrainingReaderBtn" class="secondary-btn" type="button">Fermer</button>
+        </div>
+        <div id="trainingReaderMeta" class="muted-text"></div>
+        <div id="trainingReaderBlocks" class="training-reader-blocks"></div>
+      </section>
+    </section>
+
+    <section id="crisisScreen" class="app-screen is-hidden">
+      <section id="crisisWorkspace" class="crisis-workspace">
+        <aside id="crisisSidebar" class="crisis-sidebar">
+          <div class="crisis-sidebar-head">
+            <div>
+              <p class="auth-eyebrow">Cellule de crise</p>
+              <h2>Gestion de crise</h2>
+            </div>
+            <button id="crisisSidebarToggle" type="button" class="secondary-btn crisis-sidebar-toggle" aria-controls="crisisSidebar" aria-expanded="true">Volets</button>
+          </div>
+
+          <nav id="crisisNav" class="crisis-nav" aria-label="Navigation gestion de crise">
+            <button type="button" data-crisis-view="dashboard" class="active">Tableau de bord</button>
+            <button type="button" data-crisis-view="parametrage">Paramétrage</button>
+            <button type="button" data-crisis-view="main-courante">Main courante</button>
+            <button type="button" data-crisis-view="anticipation">Anticipation</button>
+            <button type="button" data-crisis-view="logistique">Logistique</button>
+            <button type="button" data-crisis-view="flux-patients">Flux de patients</button>
+            <button type="button" data-crisis-view="communication">Communication</button>
+          </nav>
+
+          <div class="crisis-sidebar-footer">
+            <div class="crisis-sidebar-stats">
+              <div><strong id="crisisActionCount">0</strong><small>lignes</small></div>
+              <div><strong id="crisisActionPlannedCount">0</strong><small>decisions</small></div>
+              <div><strong id="crisisActionDoneCount">0</strong><small>alertes</small></div>
+            </div>
+            <p class="muted-text">Basculer rapidement entre les vues de pilotage, de coordination et de suivi.</p>
+            <button type="button" class="secondary-btn" data-open-module="dashboard">Retour dashboard</button>
+          </div>
+        </aside>
+
+        <section class="crisis-main card">
+          <section class="crisis-view-panel" data-crisis-view-panel="creation-evenement">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Initialisation</p>
+                <h3>Creation de l'evenement de crise</h3>
+              </div>
+            </div>
+            <section class="crisis-card-shell">
+              <h4>Caracteristiques de l'evenement</h4>
+              <p class="muted-text">Renseignez les caracteristiques initiales avant d'acceder au tableau de bord de gestion de crise.</p>
+              <form id="crisisEventForm" class="crisis-pilot-grid crisis-pilot-grid--simple">
+                <label class="crisis-quick-form-field">
+                  Regime
+                  <select id="crisisEventModeSelect">
+                    <option value="HET">Episode de tension hospitaliere</option>
+                    <option value="Plan blanc">Plan blanc</option>
+                  </select>
+                </label>
+                <label class="crisis-quick-form-field">
+                  Sous-categorie
+                  <select id="crisisEventSubcategorySelect"></select>
+                </label>
+                <label class="crisis-quick-form-field">
+                  Coordonnateur
+                  <input id="crisisEventCoordinatorInput" type="text" placeholder="Cadre / medecin referent" />
+                </label>
+                <label class="crisis-quick-form-field">
+                  Prochain point situation
+                  <input id="crisisEventNextBriefAt" type="datetime-local" />
+                </label>
+                <label class="crisis-quick-form-field crisis-pilot-grid-span">
+                  Declencheur
+                  <input id="crisisEventTriggerInput" type="text" placeholder="Ex: Saturation aval, afflux massif, incident technique" />
+                </label>
+                <label class="crisis-quick-form-field crisis-pilot-grid-span">
+                  Objectif initial
+                  <input id="crisisEventObjectiveInput" type="text" placeholder="Ex: Stabiliser les flux et securiser les capacites critiques" />
+                </label>
+                <label class="crisis-quick-form-field crisis-pilot-grid-span">
+                  Consigne operationnelle de demarrage
+                  <textarea id="crisisEventSummaryInput" rows="3" placeholder="Consigne de demarrage partageable immediatement"></textarea>
+                </label>
+                <div class="inline-actions crisis-pilot-grid-span">
+                  <button type="submit">Creer l'evenement et ouvrir le tableau de bord</button>
+                </div>
+              </form>
+            </section>
+          </section>
+
+          <section class="crisis-view-panel active" data-crisis-view-panel="dashboard">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Ouverture evenement</p>
+                <h3>Demarrage gestion de crise</h3>
+              </div>
+            </div>
+            <section class="crisis-card-shell">
+              <h4>Selectionner le regime</h4>
+              <p class="muted-text">Choisissez d'abord le type d'evenement pour adapter les repères de conduite.</p>
+              <div class="crisis-mode-picker">
+                <button type="button" class="secondary-btn crisis-mode-btn" data-crisis-mode-choice="HET">HET</button>
+                <button type="button" class="secondary-btn crisis-mode-btn" data-crisis-mode-choice="Plan blanc">Plan blanc</button>
+              </div>
+            </section>
+            <section class="crisis-card-shell crisis-pilot-grid crisis-pilot-grid--simple">
+              <label class="crisis-quick-form-field">
+                Regime
+                <select id="crisisModeSelect">
+                  <option value="HET">Episode de tension hospitaliere</option>
+                  <option value="Plan blanc">Plan blanc</option>
+                </select>
+              </label>
+              <label class="crisis-quick-form-field">
+                Sous-categorie active
+                <select id="crisisSubcategorySelect"></select>
+              </label>
+              <label class="crisis-quick-form-field">
+                Coordonnateur
+                <input id="crisisCoordinatorInput" type="text" placeholder="Cadre / medecin referent" />
+              </label>
+              <label class="crisis-quick-form-field">
+                Prochain point situation
+                <input id="crisisNextBriefAt" type="datetime-local" />
+              </label>
+              <label class="crisis-quick-form-field crisis-pilot-grid-span">
+                Consigne operationnelle
+                <textarea id="crisisSummaryInput" rows="2" placeholder="Consigne simple partageable a la cellule"></textarea>
+              </label>
+            </section>
+            <div class="dashboard-summary-grid crisis-kpi-grid">
+              <article class="dashboard-kpi-card">
+                <h4>Regime actif</h4>
+                <p id="crisisModeValue" class="dashboard-kpi-value">HET</p>
+                <small id="crisisOpenedAtLabel">Activation en cours</small>
+              </article>
+              <article class="dashboard-kpi-card">
+                <h4>Coordination</h4>
+                <p id="crisisLevelValue" class="dashboard-kpi-value">-</p>
+                <small id="crisisCoordinatorLabel">Coordination non renseignee</small>
+              </article>
+              <article class="dashboard-kpi-card">
+                <h4>Point suivant</h4>
+                <p id="crisisCriticalCount" class="dashboard-kpi-value">0</p>
+                <small id="crisisNextBriefLabel">Prochain point non programme</small>
+              </article>
+            </div>
+            <div class="crisis-board-grid">
+              <section class="crisis-card-shell">
+                <h4>Priorites immediates</h4>
+                <div id="crisisImmediatePriorities"></div>
+              </section>
+              <section class="crisis-card-shell">
+                <h4>Resume court</h4>
+                <div id="crisisCommandRhythm"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="crisis-view-panel" data-crisis-view-panel="parametrage">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Configuration avancée</p>
+                <h3>Paramétrage de la gestion de crise</h3>
+              </div>
+            </div>
+
+            <!-- Etape 1 : Sous-categories -->
+            <section class="crisis-card-shell">
+              <div class="section-header">
+                <div>
+                  <h4>Étape 1 — Sous-catégories de déclenchement</h4>
+                  <p class="muted-text">Définissez les situations disponibles pour HET et Plan blanc. La sous-catégorie sélectionnée dans le tableau de bord conditionne les actions affichées dans les volets opérationnels.</p>
+                </div>
+              </div>
+              <form id="crisisSubcategoryForm" class="crisis-quick-form">
+                <label class="crisis-quick-form-field">
+                  Régime
+                  <select id="crisisSubcategoryModeSelect">
+                    <option value="HET">HET</option>
+                    <option value="Plan blanc">Plan blanc</option>
+                  </select>
+                </label>
+                <label class="crisis-quick-form-field crisis-quick-form-main">
+                  Libellé de la sous-catégorie
+                  <input id="crisisSubcategoryName" type="text" placeholder="Ex : Décompensation capacitaire adulte" />
+                </label>
+                <div class="inline-actions crisis-quick-form-actions">
+                  <button type="submit">Ajouter</button>
+                </div>
+              </form>
+              <div id="crisisSubcategoryList" class="crisis-param-two-col"></div>
+            </section>
+
+            <!-- Etape 2 : Catalogue d'actions par domaine -->
+            <section class="crisis-card-shell">
+              <div class="section-header">
+                <div>
+                  <h4>Étape 2 — Catalogue d'actions par domaine</h4>
+                  <p class="muted-text">Pour chaque sous-catégorie, renseignez les actions disponibles dans les quatre domaines opérationnels. Ces actions s'afficheont dans les volets Anticipation, Logistique, Flux de patients et Communication.</p>
+                </div>
+              </div>
+              <div class="crisis-param-selector-bar">
+                <label class="crisis-quick-form-field">
+                  Régime
+                  <select id="crisisConfiguredActionModeSelect">
+                    <option value="HET">HET</option>
+                    <option value="Plan blanc">Plan blanc</option>
+                  </select>
+                </label>
+                <label class="crisis-quick-form-field">
+                  Sous-catégorie
+                  <select id="crisisConfiguredActionSubcategorySelect"></select>
+                </label>
+              </div>
+              <div id="crisisConfiguredActionList" class="crisis-param-domain-grid"></div>
+            </section>
+          </section>
+
+          <section class="crisis-view-panel" data-crisis-view-panel="main-courante">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Trace operationnelle</p>
+                <h3>Main courante crise</h3>
+              </div>
+            </div>
+            <section class="crisis-card-shell">
+              <h4>Ajouter une ligne</h4>
+              <form id="crisisActionForm" class="crisis-quick-form">
+                <label class="crisis-quick-form-field">
+                  Fonction
+                  <select id="crisisActionFunction">
+                    <option value="dashboard">Tableau de bord</option>
+                    <option value="main-courante" selected>Main courante</option>
+                    <option value="anticipation">Anticipation</option>
+                    <option value="logistique">Logistique</option>
+                    <option value="flux-patients">Flux de patients</option>
+                    <option value="communication">Communication</option>
+                  </select>
+                </label>
+                <label class="crisis-quick-form-field">
+                  Nature
+                  <select id="crisisActionStatus">
+                    <option value="Information" selected>Information</option>
+                    <option value="Decision">Decision</option>
+                    <option value="Action">Action</option>
+                    <option value="Alerte">Alerte</option>
+                  </select>
+                </label>
+                <label class="crisis-quick-form-field crisis-quick-form-main">
+                  Ligne de main courante
+                  <input id="crisisActionTitle" type="text" placeholder="Ex: Renfort IDE demande au cadre de garde" />
+                </label>
+                <label class="crisis-quick-form-field">
+                  Responsable
+                  <input id="crisisActionOwner" type="text" placeholder="Qui pilote ?" />
+                </label>
+                <label class="crisis-quick-form-field">
+                  Echeance
+                  <input id="crisisActionDueAt" type="datetime-local" />
+                </label>
+                <label class="crisis-quick-form-field crisis-pilot-grid-span">
+                  Consigne / detail
+                  <textarea id="crisisActionNotes" rows="2" placeholder="Instruction, arbitrage, risque, point de contact"></textarea>
+                </label>
+                <div class="inline-actions crisis-quick-form-actions">
+                  <button type="submit">Ajouter a la main courante</button>
+                </div>
+              </form>
+            </section>
+            <section class="crisis-card-shell">
+              <div class="section-header">
+                <h4>Journal consolide</h4>
+              </div>
+              <p class="muted-text">Chaque ligne consigne un fait, une decision, une alerte ou une action issue des fonctions de gestion de crise.</p>
+              <div id="crisisActionList" class="crisis-timeline"></div>
+            </section>
+          </section>
+
+          <section class="crisis-view-panel" data-crisis-view-panel="anticipation">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Projection</p>
+                <h3>Anticipation</h3>
+              </div>
+            </div>
+            <div class="crisis-board-grid">
+              <section class="crisis-card-shell">
+                <h4>Anticipation H+2 / H+6</h4>
+                <div id="crisisAnticipationBoard"></div>
+              </section>
+              <section class="crisis-card-shell">
+                <h4>Mesures preparatoires</h4>
+                <div id="crisisMitigationBoard"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="crisis-view-panel" data-crisis-view-panel="logistique">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Moyens engages</p>
+                <h3>Logistique crise</h3>
+              </div>
+            </div>
+            <div class="crisis-board-grid">
+              <section class="crisis-card-shell">
+                <h4>Ressources sensibles</h4>
+                <div id="crisisLogisticsBoard" class="commandes-list"></div>
+              </section>
+              <section class="crisis-card-shell">
+                <h4>Ordres logistiques</h4>
+                <div id="crisisLogisticsActions"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="crisis-view-panel" data-crisis-view-panel="flux-patients">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Regulation terrain</p>
+                <h3>Flux de patients</h3>
+              </div>
+            </div>
+            <div class="dashboard-summary-grid crisis-kpi-grid">
+              <article class="dashboard-kpi-card">
+                <h4>Accueil / tri</h4>
+                <p id="crisisWaitingRoomValue" class="dashboard-kpi-value">0</p>
+                <small>Patients en file active</small>
+              </article>
+              <article class="dashboard-kpi-card">
+                <h4>UHCD / aval</h4>
+                <p id="crisisBedOccupancyValue" class="dashboard-kpi-value">0%</p>
+                <small>Taux d'occupation</small>
+              </article>
+              <article class="dashboard-kpi-card">
+                <h4>Temps moyen</h4>
+                <p id="crisisCriticalFlowValue" class="dashboard-kpi-value">0</p>
+                <small>Patients critiques en file</small>
+              </article>
+            </div>
+            <section class="crisis-card-shell">
+              <h4>Axes de fluidification</h4>
+              <div id="crisisFlowBoard"></div>
+            </section>
+          </section>
+
+          <section class="crisis-view-panel" data-crisis-view-panel="communication">
+            <div class="section-header">
+              <div>
+                <p class="auth-eyebrow">Messages et coordination</p>
+                <h3>Communication</h3>
+              </div>
+            </div>
+            <div class="crisis-board-grid">
+              <section class="crisis-card-shell">
+                <h4>Destinataires prioritaires</h4>
+                <div id="crisisCommunicationContacts"></div>
+              </section>
+              <section class="crisis-card-shell">
+                <h4>Message de situation</h4>
+                <div id="crisisCommunicationBoard"></div>
+              </section>
+            </div>
+          </section>
+        </section>
+      </section>
+    </section>
+
+    <section id="logisticsScreen" class="app-screen is-hidden">
 
     <nav id="viewTabs" class="view-tabs" aria-label="Navigation principale">
       <button type="button" data-view-tab="infos">Infos</button>
@@ -56,7 +735,7 @@
           </label>
           <label class="full-width">
             Observations generales
-            <textarea id="dayNotes" rows="3" placeholder="Points importants de la journee"></textarea>
+            <textarea id="dayNotes" rows="3"></textarea>
           </label>
           <label class="full-width">
             Item de main courante
@@ -73,6 +752,14 @@
         <h2>Tableau de bord general</h2>
         <div id="dashboardSummary" class="dashboard-summary-grid"></div>
         <div class="dashboard-block">
+          <h3>Commandes prevues du jour</h3>
+          <div id="dashboardCommands" class="commandes-list"></div>
+        </div>
+        <div class="dashboard-block">
+          <h3>Verifications journalieres prevues</h3>
+          <div id="verificationsPlannedList" class="commandes-list"></div>
+        </div>
+        <div class="dashboard-block">
           <h3>Notes de la main courante</h3>
           <p id="dashboardNotes" class="muted-text">Aucune note.</p>
         </div>
@@ -84,13 +771,162 @@
 
       <section class="card view-panel" data-view-panel="commandes">
         <h2>Panneau gestion des commandes</h2>
+        <div id="commandSubTabs" class="view-tabs commandes-tabs">
+          <button type="button" data-command-tab="validation" class="active">Validation commande</button>
+          <button type="button" data-command-tab="planning">Planification</button>
+          <button type="button" data-command-tab="occurrences">Suivi occurrences</button>
+        </div>
+
+        <div id="commandPlanningPanel" class="is-hidden">
         <div class="dashboard-block">
-          <h3>Commandes prevues</h3>
+          <h3>Nouvelle commande</h3>
+          <form id="commandForm" class="grid-form">
+            <label>
+              Titre
+              <input id="commandTitle" type="text" placeholder="Ex: Commander kits d'intubation" />
+            </label>
+            <label>
+              Echeance
+              <input id="commandPlannedAt" type="datetime-local" />
+            </label>
+            <label>
+              Responsable
+              <input id="commandAssignee" type="text" placeholder="Nom du responsable" />
+            </label>
+            <div class="inline-actions full-width quick-command-shortcuts">
+              <button id="commandDueIn2hBtn" type="button" class="secondary-btn">+2h</button>
+              <button id="commandDueIn8hBtn" type="button" class="secondary-btn">+8h</button>
+              <button id="commandDueTomorrowBtn" type="button" class="secondary-btn">Demain 08:00</button>
+            </div>
+            <details id="commandAdvancedOptions" class="full-width command-advanced-options">
+              <summary>Options avancees</summary>
+              <div class="grid-form">
+                <label>
+                  Categorie
+                  <input id="commandCategory" type="text" placeholder="Ex: Pharmacie" />
+                </label>
+                <label>
+                  Priorite
+                  <select id="commandPriority">
+                    <option>Basse</option>
+                    <option selected>Normale</option>
+                    <option>Haute</option>
+                    <option>Critique</option>
+                  </select>
+                </label>
+                <label>
+                  Statut initial
+                  <select id="commandStatus">
+                    <option selected>A realiser</option>
+                    <option>Terminee</option>
+                  </select>
+                </label>
+                <label>
+                  Recurrence
+                  <select id="commandRecurrenceType">
+                    <option selected>Aucune</option>
+                    <option>Quotidienne</option>
+                    <option>Hebdomadaire</option>
+                    <option>Mensuelle</option>
+                  </select>
+                </label>
+                <div id="commandRecurrenceWeekdays" class="full-width recurrence-weekdays is-hidden">
+                  <span>Jours de recurrence</span>
+                  <div class="weekday-grid">
+                    <label><input type="checkbox" value="1" /> Lundi</label>
+                    <label><input type="checkbox" value="2" /> Mardi</label>
+                    <label><input type="checkbox" value="3" /> Mercredi</label>
+                    <label><input type="checkbox" value="4" /> Jeudi</label>
+                    <label><input type="checkbox" value="5" /> Vendredi</label>
+                    <label><input type="checkbox" value="6" /> Samedi</label>
+                    <label><input type="checkbox" value="0" /> Dimanche</label>
+                  </div>
+                </div>
+                <label>
+                  Pas recurrence
+                  <input id="commandRecurrenceEvery" type="number" min="1" step="1" value="1" />
+                </label>
+                <label>
+                  Recurrence infinie
+                  <input id="commandRecurrenceInfinite" type="checkbox" />
+                </label>
+                <label class="full-width">
+                  Notes
+                  <textarea id="commandNotes" rows="2"></textarea>
+                </label>
+              </div>
+            </details>
+            <div class="inline-actions full-width">
+              <button id="addCommandBtn" type="button">Ajouter la commande</button>
+            </div>
+          </form>
+        </div>
+        <div class="dashboard-block">
+          <h3>Filtrer et suivre</h3>
+          <div class="inline-actions">
+            <select id="commandFilterStatus">
+              <option value="all" selected>Tous les statuts</option>
+              <option value="A realiser">A realiser</option>
+              <option value="Terminee">Terminee</option>
+            </select>
+            <input id="commandSearch" type="text" placeholder="Rechercher une commande" />
+          </div>
+        </div>
+        <div class="dashboard-block">
+          <h3>Planification des commandes</h3>
           <div id="commandsPlannedList" class="commandes-list"></div>
         </div>
         <div class="dashboard-block">
-          <h3>Verifications journalieres prevues</h3>
-          <div id="verificationsPlannedList" class="commandes-list"></div>
+          <div class="section-header">
+            <h3>Agenda des commandes</h3>
+            <div class="inline-actions">
+              <button id="commandAgendaPrevMonthBtn" type="button" class="secondary-btn">Mois precedent</button>
+              <span id="commandAgendaMonthLabel" class="muted-text">-</span>
+              <button id="commandAgendaNextMonthBtn" type="button" class="secondary-btn">Mois suivant</button>
+            </div>
+          </div>
+          <div id="commandAgendaGrid" class="command-agenda-grid"></div>
+          <div id="commandAgendaEvents" class="command-agenda-events"></div>
+        </div>
+        </div>
+
+        <div id="commandValidationDayPanel">
+          <div class="dashboard-block">
+            <h3>Commandes du jour</h3>
+            <div id="commandsValidationSummary" class="commandes-summary-grid"></div>
+          </div>
+          <div class="dashboard-block">
+            <h3>Validation du jour</h3>
+            <div id="commandsValidationList" class="commandes-list"></div>
+          </div>
+          <div id="commandValidationPanel" class="dashboard-block is-hidden">
+            <h3>Signature de validation des commandes</h3>
+            <p id="commandValidationTarget" class="muted-text">Aucune commande selectionnee.</p>
+            <div class="inline-actions">
+              <button id="confirmCommandValidationBtn" type="button">Confirmer la validation</button>
+              <button id="cancelCommandValidationBtn" class="secondary-btn" type="button">Annuler</button>
+            </div>
+            <p class="muted-text">La signature utilisee est celle enregistree dans la page Checklist.</p>
+          </div>
+          <div class="dashboard-block">
+            <h3>Historique du jour</h3>
+            <div id="commandsValidationHistory" class="commandes-list"></div>
+          </div>
+        </div>
+
+        <div id="commandOccurrencesPanel" class="is-hidden">
+          <div class="dashboard-block">
+            <h3>Suivi des occurrences</h3>
+            <div id="commandsTrackingSummary" class="commandes-summary-grid"></div>
+          </div>
+          <div class="dashboard-block">
+            <h3>Onglets de suivi</h3>
+            <div id="commandSeriesTabs" class="view-tabs commandes-tabs"></div>
+          </div>
+          <div class="dashboard-block">
+            <h3>Historique et avancement</h3>
+            <div id="commandsTrackingList" class="commandes-list"></div>
+          </div>
         </div>
       </section>
 
@@ -104,6 +940,7 @@
           <table>
             <thead>
               <tr>
+                <th>Date</th>
                 <th>Heure</th>
                 <th>Secteur</th>
                 <th>Recurrence</th>
@@ -116,9 +953,42 @@
             <tbody id="planningBody"></tbody>
           </table>
         </div>
+        <div class="dashboard-block">
+          <div class="section-header">
+            <h3>Agenda des verifications</h3>
+            <div class="inline-actions">
+              <button id="planningAgendaPrevMonthBtn" type="button" class="secondary-btn">Mois precedent</button>
+              <span id="planningAgendaMonthLabel" class="muted-text">-</span>
+              <button id="planningAgendaNextMonthBtn" type="button" class="secondary-btn">Mois suivant</button>
+            </div>
+          </div>
+          <div id="planningAgendaGrid" class="command-agenda-grid"></div>
+          <div id="planningAgendaEvents" class="command-agenda-events"></div>
+        </div>
       </section>
 
       <section class="card view-panel" data-view-panel="checklist">
+
+        <div class="dashboard-block">
+          <h3>Signature de verification</h3>
+          <p class="muted-text">Enregistrez la signature ici avant de valider la verification du secteur.</p>
+          <form id="signatureMetaForm" class="grid-form">
+            <label>
+              Signataire
+              <input id="signerName" type="text" placeholder="Nom et prenom" />
+            </label>
+            <label>
+              Fonction
+              <input id="signerRole" type="text" placeholder="Ex: Chef de poste" />
+            </label>
+          </form>
+          <canvas id="signaturePad" class="signature-pad" width="900" height="260"></canvas>
+          <div class="inline-actions">
+            <button id="saveSignatureBtn" type="button">Enregistrer la signature</button>
+            <button id="clearSignatureBtn" class="secondary-btn" type="button">Effacer</button>
+          </div>
+          <p id="signatureStatus" class="muted-text">Aucune signature enregistree.</p>
+        </div>
 
         <div id="checklistSectorStep" class="checklist-step">
           <h3>Secteurs</h3>
@@ -138,7 +1008,7 @@
               <button id="validateSectorBtn" type="button">Valider verification secteur</button>
             </div>
             <p id="sectorValidationStatus" class="muted-text">Aucune validation secteur.</p>
-            <textarea id="sectorGeneralComment" rows="2" placeholder="Observation generale du secteur"></textarea>
+            <textarea id="sectorGeneralComment" rows="2"></textarea>
             <div>
               <h4>Anomalies secteur</h4>
               <div id="sectorAnomalies" class="anomaly-list"></div>
@@ -152,24 +1022,6 @@
               <div id="sectorConsumablesList" class="restock-list"></div>
             </details>
 
-            <h4>Signature de validation generale</h4>
-            <form id="signatureMetaForm" class="grid-form">
-              <label>
-                Signataire
-                <input id="signerName" type="text" placeholder="Nom et prenom" />
-              </label>
-              <label>
-                Fonction
-                <input id="signerRole" type="text" placeholder="Ex: Chef de poste" />
-              </label>
-            </form>
-            <p class="muted-text">Signez ci-dessous avant de valider la verification generale.</p>
-            <canvas id="signaturePad" class="signature-pad" width="900" height="260"></canvas>
-            <div class="inline-actions">
-              <button id="saveSignatureBtn" type="button">Enregistrer la signature</button>
-              <button id="clearSignatureBtn" class="secondary-btn" type="button">Effacer</button>
-            </div>
-            <p id="signatureStatus" class="muted-text">Aucune signature enregistree.</p>
           </div>
         </div>
 
@@ -185,7 +1037,7 @@
           <div id="itemSubcategoryList" class="subpart-list"></div>
           <label>
             Commentaire sous-categorie
-            <textarea id="categoryComment" rows="2" placeholder="Observation de la sous-categorie"></textarea>
+            <textarea id="categoryComment" rows="2"></textarea>
           </label>
           <div>
             <h4>Anomalies sous-categorie</h4>
@@ -331,6 +1183,8 @@
         </div>
       </section>
     </main>
+    </section>
+    </div>
 
     <script>
       window.__SAU_APP_READY = false;
@@ -356,6 +1210,6 @@
         }, 1200);
       });
     </script>
-    <script type="module" src="./js/main.js?v=20260419-1"></script>
+    <script type="module" src="./js/main.js?v=20260430-7"></script>
   </body>
 </html>

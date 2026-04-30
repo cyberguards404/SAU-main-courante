@@ -38,6 +38,11 @@ Puis ouvrir `http://127.0.0.1:8000/`.
 
 Dans Codespaces, ouvrir l'URL du port `8000` (pas `4173`) pour eviter les erreurs de frame/origine.
 
+Connexion initiale:
+
+- Identifiant: `admin`
+- Mot de passe: `admin123`
+
 ## Architecture code (sectorisee)
 
 - `js/main.js`: point d'entree et orchestration des rendus.

@@ -1,5 +1,5 @@
-import { state, saveState } from "../core/state.js";
-import { dom } from "../core/dom.js";
+import { state, saveState } from "../core/state.js?v=20260430-7";
+import { dom } from "../core/dom.js?v=20260430-7";
 
 let signatureCtx = null;
 let drawing = false;

@@ -1,5 +1,5 @@
-import { state, createId, saveState } from "../core/state.js";
-import { dom, escapeHtml } from "../core/dom.js";
+import { state, createId, saveState } from "../core/state.js?v=20260430-7";
+import { dom, escapeHtml } from "../core/dom.js?v=20260430-7";
 
 export function renderPhotos() {
   dom.photoGallery.innerHTML = "";

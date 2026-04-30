@@ -11,6 +11,9 @@ import os
 import sqlite3
 import traceback
 import uuid
+import hashlib
+import hmac
+import secrets
 from datetime import datetime
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +21,22 @@ from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "main-courante.db")
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin123"
+
+
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120000)
+    return f"{salt}${derived.hex()}"
+
+
+def verify_password(password, stored_hash):
+    if not stored_hash or "$" not in stored_hash:
+        return False
+    salt, expected = stored_hash.split("$", 1)
+    candidate = hash_password(password, salt).split("$", 1)[1]
+    return hmac.compare_digest(candidate, expected)
 
 
 def init_db():
@@ -61,6 +80,64 @@ def init_db():
         )
         """
     )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            full_name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            token TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS training_content (
+            id TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO training_content (id, data)
+        VALUES ('main', '{"categories": [], "attempts": []}')
+        """
+    )
+
+    cursor.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_ADMIN_USERNAME,))
+    if cursor.fetchone() is None:
+        cursor.execute(
+            """
+            INSERT INTO users (id, username, full_name, role, password_hash, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+            """,
+            (
+                str(uuid.uuid4()),
+                DEFAULT_ADMIN_USERNAME,
+                "Administrateur principal",
+                "admin",
+                hash_password(DEFAULT_ADMIN_PASSWORD),
+            ),
+        )
 
     conn.commit()
     conn.close()
@@ -129,10 +206,67 @@ class RequestHandler(SimpleHTTPRequestHandler):
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON")
 
+    def _get_bearer_token(self):
+        header = self.headers.get("Authorization", "")
+        prefix = "Bearer "
+        if not header.startswith(prefix):
+            return ""
+        return header[len(prefix):].strip()
+
+    def _get_authenticated_user(self, required_role=None):
+        token = self._get_bearer_token()
+        if not token:
+            raise PermissionError("Authentification requise")
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT users.id, users.username, users.full_name, users.role, users.is_active
+            FROM auth_sessions
+            JOIN users ON users.id = auth_sessions.user_id
+            WHERE auth_sessions.token = ?
+            """,
+            (token,),
+        )
+        row = cursor.fetchone()
+        if row:
+            cursor.execute(
+                "UPDATE auth_sessions SET last_seen = CURRENT_TIMESTAMP WHERE token = ?",
+                (token,),
+            )
+            conn.commit()
+        conn.close()
+
+        if not row:
+            raise PermissionError("Session invalide")
+        if not bool(row[4]):
+            raise PermissionError("Utilisateur desactive")
+
+        user = {
+            "id": row[0],
+            "username": row[1],
+            "full_name": row[2],
+            "role": row[3],
+            "is_active": bool(row[4]),
+        }
+        if required_role and user["role"] != required_role:
+            raise PermissionError("Acces refuse")
+        return user
+
     def _handle_api_get(self, parsed):
         try:
+            if parsed.path == "/api/auth/me":
+                self._get_auth_me()
+                return
             if parsed.path == "/api/state":
                 self._get_state()
+                return
+            if parsed.path == "/api/users":
+                self._get_users()
+                return
+            if parsed.path == "/api/training":
+                self._get_training()
                 return
             if parsed.path == "/api/operators":
                 self._get_operators()
@@ -148,8 +282,26 @@ class RequestHandler(SimpleHTTPRequestHandler):
     def _handle_api_post(self, parsed):
         try:
             data = self._read_json_body()
+            if parsed.path == "/api/auth/login":
+                self._login(data)
+                return
+            if parsed.path == "/api/auth/logout":
+                self._logout()
+                return
             if parsed.path == "/api/session/register":
                 self._register_session(data)
+                return
+            if parsed.path == "/api/users":
+                self._create_user(data)
+                return
+            if parsed.path == "/api/users/toggle-active":
+                self._toggle_user_active(data)
+                return
+            if parsed.path == "/api/training":
+                self._save_training(data)
+                return
+            if parsed.path == "/api/training/attempt":
+                self._save_training_attempt(data)
                 return
             if parsed.path == "/api/state":
                 self._save_state(data)
@@ -181,6 +333,13 @@ class RequestHandler(SimpleHTTPRequestHandler):
             state = {}
         self._send_json(200, state)
 
+    def _get_auth_me(self):
+        try:
+            user = self._get_authenticated_user()
+            self._send_json(200, {"user": user})
+        except PermissionError as error:
+            self._send_json(401, {"error": str(error)})
+
     def _get_operators(self):
         conn = sqlite3.connect(DB_FILE, timeout=10)
         cursor = conn.cursor()
@@ -204,6 +363,61 @@ class RequestHandler(SimpleHTTPRequestHandler):
             }
             for row in operators
         ]
+        self._send_json(200, payload)
+
+    def _get_users(self):
+        try:
+            self._get_authenticated_user(required_role="admin")
+        except PermissionError as error:
+            self._send_json(403, {"error": str(error)})
+            return
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, username, full_name, role, is_active, created_at
+            FROM users
+            ORDER BY full_name COLLATE NOCASE ASC
+            """
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        payload = [
+            {
+                "id": row[0],
+                "username": row[1],
+                "full_name": row[2],
+                "role": row[3],
+                "is_active": bool(row[4]),
+                "created_at": row[5],
+            }
+            for row in rows
+        ]
+        self._send_json(200, payload)
+
+    def _get_training(self):
+        try:
+            self._get_authenticated_user()
+        except PermissionError as error:
+            self._send_json(401, {"error": str(error)})
+            return
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("SELECT data FROM training_content WHERE id = 'main'")
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            self._send_json(200, {"categories": [], "attempts": []})
+            return
+
+        try:
+            payload = json.loads(row[0])
+        except json.JSONDecodeError:
+            payload = {"categories": [], "attempts": []}
         self._send_json(200, payload)
 
     def _get_audit(self, parsed):
@@ -262,6 +476,209 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 "message": f"Session enregistree pour {operator_name}",
             },
         )
+
+    def _login(self, data):
+        username = str(data.get("username", "")).strip().lower()
+        password = str(data.get("password", ""))
+        if not username or not password:
+            self._send_json(400, {"error": "Identifiants requis"})
+            return
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, username, full_name, role, password_hash, is_active
+            FROM users
+            WHERE lower(username) = ?
+            """,
+            (username,),
+        )
+        row = cursor.fetchone()
+        if not row or not bool(row[5]) or not verify_password(password, row[4]):
+            conn.close()
+            self._send_json(401, {"error": "Identifiants invalides"})
+            return
+
+        token = secrets.token_hex(32)
+        cursor.execute(
+            "INSERT INTO auth_sessions (token, user_id) VALUES (?, ?)",
+            (token, row[0]),
+        )
+        conn.commit()
+        conn.close()
+
+        self._send_json(
+            200,
+            {
+                "token": token,
+                "user": {
+                    "id": row[0],
+                    "username": row[1],
+                    "full_name": row[2],
+                    "role": row[3],
+                    "is_active": bool(row[5]),
+                },
+            },
+        )
+
+    def _logout(self):
+        token = self._get_bearer_token()
+        if token:
+            conn = sqlite3.connect(DB_FILE, timeout=10)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM auth_sessions WHERE token = ?", (token,))
+            conn.commit()
+            conn.close()
+        self._send_json(200, {"message": "Deconnecte"})
+
+    def _create_user(self, data):
+        try:
+            self._get_authenticated_user(required_role="admin")
+        except PermissionError as error:
+            self._send_json(403, {"error": str(error)})
+            return
+
+        username = str(data.get("username", "")).strip().lower()
+        full_name = str(data.get("full_name", "")).strip()
+        role = str(data.get("role", "apprenant")).strip().lower() or "apprenant"
+        password = str(data.get("password", ""))
+        if not username or not full_name or not password:
+            self._send_json(400, {"error": "Nom complet, identifiant et mot de passe requis"})
+            return
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO users (id, username, full_name, role, password_hash, is_active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (str(uuid.uuid4()), username, full_name, role, hash_password(password)),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.close()
+            self._send_json(409, {"error": "Identifiant deja utilise"})
+            return
+        conn.close()
+        self._send_json(201, {"message": "Utilisateur cree"})
+
+    def _toggle_user_active(self, data):
+        try:
+            actor = self._get_authenticated_user(required_role="admin")
+        except PermissionError as error:
+            self._send_json(403, {"error": str(error)})
+            return
+
+        user_id = str(data.get("user_id", "")).strip()
+        is_active = bool(data.get("is_active"))
+        if not user_id:
+            self._send_json(400, {"error": "Utilisateur cible requis"})
+            return
+        if actor["id"] == user_id and not is_active:
+            self._send_json(400, {"error": "Vous ne pouvez pas vous desactiver"})
+            return
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET is_active = ? WHERE id = ?", (1 if is_active else 0, user_id))
+        if not is_active:
+            cursor.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
+        conn.commit()
+        conn.close()
+        self._send_json(200, {"message": "Utilisateur mis a jour"})
+
+    def _save_training(self, data):
+        try:
+            actor = self._get_authenticated_user()
+        except PermissionError as error:
+            self._send_json(401, {"error": str(error)})
+            return
+
+        if actor["role"] not in {"admin", "formateur"}:
+            self._send_json(403, {"error": "Acces reserve aux admins et formateurs"})
+            return
+
+        categories = data.get("categories", [])
+        if not isinstance(categories, list):
+            self._send_json(400, {"error": "Format categories invalide"})
+            return
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("SELECT data FROM training_content WHERE id = 'main'")
+        row = cursor.fetchone()
+        existing_attempts = []
+        if row:
+            try:
+                existing_payload = json.loads(row[0])
+                if isinstance(existing_payload.get("attempts"), list):
+                    existing_attempts = existing_payload.get("attempts", [])
+            except json.JSONDecodeError:
+                existing_attempts = []
+
+        payload = {
+            "categories": categories,
+            "attempts": existing_attempts,
+            "updated_by": actor["full_name"],
+            "updated_at": datetime.now().isoformat(),
+        }
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO training_content (id, data, updated_at)
+            VALUES ('main', ?, CURRENT_TIMESTAMP)
+            """,
+            (json.dumps(payload),),
+        )
+        conn.commit()
+        conn.close()
+        self._send_json(200, {"message": "Contenu de formation mis a jour"})
+
+    def _save_training_attempt(self, data):
+        try:
+            actor = self._get_authenticated_user()
+        except PermissionError as error:
+            self._send_json(401, {"error": str(error)})
+            return
+
+        attempt = {
+            "id": str(uuid.uuid4()),
+            "user_id": actor["id"],
+            "user_name": actor["full_name"],
+            "course_id": str(data.get("course_id", "")),
+            "course_title": str(data.get("course_title", "")),
+            "score": int(data.get("score", 0)),
+            "total": int(data.get("total", 0)),
+            "points": int(data.get("points", 0)),
+            "completed_at": datetime.now().isoformat(),
+        }
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("SELECT data FROM training_content WHERE id = 'main'")
+        row = cursor.fetchone()
+        payload = {"categories": [], "attempts": []}
+        if row:
+            try:
+                payload = json.loads(row[0])
+            except json.JSONDecodeError:
+                payload = {"categories": [], "attempts": []}
+
+        attempts = payload.get("attempts", []) if isinstance(payload.get("attempts"), list) else []
+        attempts.append(attempt)
+        payload["attempts"] = attempts[-500:]
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO training_content (id, data, updated_at)
+            VALUES ('main', ?, CURRENT_TIMESTAMP)
+            """,
+            (json.dumps(payload),),
+        )
+        conn.commit()
+        conn.close()
+        self._send_json(200, {"message": "Tentative enregistree", "attempt": attempt})
 
     def _save_state(self, data):
         state_data = data.get("state", {})

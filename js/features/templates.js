@@ -10,8 +10,8 @@ import {
   getCategoryById,
   getItemSubcategoryById,
   saveState,
-} from "../core/state.js";
-import { dom, escapeHtml } from "../core/dom.js";
+} from "../core/state.js?v=20260430-7";
+import { dom, escapeHtml } from "../core/dom.js?v=20260430-7";
 
 let rerenderAll = () => {};
 
