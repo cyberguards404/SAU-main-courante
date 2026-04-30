@@ -31,10 +31,12 @@ Application web de **main courante journalière** pour :
 Ouvrir `index.html` dans un navigateur, ou lancer un serveur statique :
 
 ```bash
-python3 -m http.server 4173
+python3 server.py
 ```
 
-Puis ouvrir `http://127.0.0.1:4173/index.html`.
+Puis ouvrir `http://127.0.0.1:8000/`.
+
+Dans Codespaces, ouvrir l'URL du port `8000` (pas `4173`) pour eviter les erreurs de frame/origine.
 
 ## Architecture code (sectorisee)
 

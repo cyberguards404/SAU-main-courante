@@ -7,7 +7,7 @@
 cd /workspaces/SAU-main-courante
 bash start-servers.sh
 ```
-✅ Attendez que ça affiche "✅ Serveurs actifs!"
+✅ Attendez que ça affiche "✅ Serveur actif!"
 
 ### 2. Créer templates
 - Allez à: http://localhost:8000
@@ -53,20 +53,19 @@ http://192.168.1.50:8000
 
 **Sur téléphone:**
 ```
-http://[IP]:8001/api/operators
-# Vous devez voir du JSON (une liste)
+http://[IP]:8000
+# L'application doit s'ouvrir directement
 ```
 
 ---
 
-## 🚨 Bug = 2 serveurs manquants?
+## 🚨 Bug = serveur non lancé?
 
 ```bash
-# Vérifier les deux serveurs tournent:
+# Vérifier que le serveur tourne:
 lsof -i :8000
-lsof -i :8001
 
-# Si l'un manque:
+# S'il manque:
 pkill -f python3
 bash start-servers.sh
 ```

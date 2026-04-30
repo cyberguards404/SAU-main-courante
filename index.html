@@ -25,7 +25,6 @@
         <p>Planification des commandes et checklist de verification</p>
       </div>
       <div id="serverStatus" class="server-status" title="Statut serveur collaboratif"></div>
-      <div id="activeOperators" class="active-operators"></div>
       <div class="header-actions">
         <button id="exportDataBtn" class="secondary-btn" type="button">Exporter JSON</button>
         <button id="printReportBtn" class="secondary-btn" type="button">Imprimer</button>
@@ -35,10 +34,11 @@
 
     <nav id="viewTabs" class="view-tabs" aria-label="Navigation principale">
       <button type="button" data-view-tab="infos">Infos</button>
+      <button type="button" data-view-tab="dashboard">Tableau de bord</button>
+      <button type="button" data-view-tab="commandes">Gestion commandes</button>
       <button type="button" data-view-tab="planning">Admin planification</button>
       <button type="button" data-view-tab="templates">Templates</button>
       <button type="button" data-view-tab="checklist">Checklist</button>
-      <button type="button" data-view-tab="photos">Photos</button>
       <button type="button" data-view-tab="suivi">Suivi</button>
     </nav>
 
@@ -58,7 +58,40 @@
             Observations generales
             <textarea id="dayNotes" rows="3" placeholder="Points importants de la journee"></textarea>
           </label>
+          <label class="full-width">
+            Item de main courante
+            <div class="inline-actions">
+              <input id="dayItemInput" type="text" placeholder="Ajouter un item de la main courante" />
+              <button id="addDayItemBtn" type="button">Ajouter</button>
+            </div>
+          </label>
         </form>
+        <div id="dayItemsList" class="mc-items-list"></div>
+      </section>
+
+      <section class="card view-panel" data-view-panel="dashboard">
+        <h2>Tableau de bord general</h2>
+        <div id="dashboardSummary" class="dashboard-summary-grid"></div>
+        <div class="dashboard-block">
+          <h3>Notes de la main courante</h3>
+          <p id="dashboardNotes" class="muted-text">Aucune note.</p>
+        </div>
+        <div class="dashboard-block">
+          <h3>Items de la main courante</h3>
+          <div id="dashboardItems" class="mc-items-list"></div>
+        </div>
+      </section>
+
+      <section class="card view-panel" data-view-panel="commandes">
+        <h2>Panneau gestion des commandes</h2>
+        <div class="dashboard-block">
+          <h3>Commandes prevues</h3>
+          <div id="commandsPlannedList" class="commandes-list"></div>
+        </div>
+        <div class="dashboard-block">
+          <h3>Verifications journalieres prevues</h3>
+          <div id="verificationsPlannedList" class="commandes-list"></div>
+        </div>
       </section>
 
       <section class="card view-panel" data-view-panel="planning">
@@ -86,10 +119,6 @@
       </section>
 
       <section class="card view-panel" data-view-panel="checklist">
-        <div class="section-header">
-          <h2>Checklist du jour</h2>
-        </div>
-        <p class="muted-text">Flux operationnel: secteur -> sous-categorie -> sous-sous-categorie.</p>
 
         <div id="checklistSectorStep" class="checklist-step">
           <h3>Secteurs</h3>
@@ -109,14 +138,19 @@
               <button id="validateSectorBtn" type="button">Valider verification secteur</button>
             </div>
             <p id="sectorValidationStatus" class="muted-text">Aucune validation secteur.</p>
-            <label>
-              Commentaires generaux secteur
-              <textarea id="sectorGeneralComment" rows="2" placeholder="Observation generale du secteur"></textarea>
-            </label>
+            <textarea id="sectorGeneralComment" rows="2" placeholder="Observation generale du secteur"></textarea>
             <div>
               <h4>Anomalies secteur</h4>
               <div id="sectorAnomalies" class="anomaly-list"></div>
             </div>
+
+            <details class="restock-panel">
+              <summary>
+                Consommables a reassort
+                <span id="sectorConsumablesCount" class="restock-count">0</span>
+              </summary>
+              <div id="sectorConsumablesList" class="restock-list"></div>
+            </details>
 
             <h4>Signature de validation generale</h4>
             <form id="signatureMetaForm" class="grid-form">
@@ -172,19 +206,7 @@
             <span class="tabs-label">Sous-sous-categories:</span>
             <div id="itemsSubcategoriesQuickNav" class="quick-nav-list"></div>
           </div>
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Validation</th>
-                  <th>Item</th>
-                  <th>Commentaire</th>
-                  <th>Photo</th>
-                </tr>
-              </thead>
-              <tbody id="subChecklistBody"></tbody>
-            </table>
-          </div>
+          <div id="subChecklistBody" class="checklist-items-list"></div>
           <p id="subChecklistCompletionText" class="badge">0 valide, 0 non valide sur 0</p>
         </div>
       </section>
@@ -294,49 +316,46 @@
         </div>
       </section>
 
-      <section class="card view-panel" data-view-panel="photos">
-        <h2>Photos de controle</h2>
-        <label class="file-input">
-          <span>Ajouter une ou plusieurs photos</span>
-          <input id="photoInput" type="file" accept="image/*" capture="environment" multiple />
-        </label>
-        <div id="photoGallery" class="photo-gallery"></div>
-      </section>
-
       <section class="card view-panel" data-view-panel="suivi">
         <h2>Suivi</h2>
         <p id="completionText" class="badge">0 / 0 verifications realisees</p>
+
+        <div class="suivi-block">
+          <h3>Verifications realisees</h3>
+          <div id="suiviVerifications"></div>
+        </div>
+
+        <div class="suivi-block">
+          <h3>Tickets</h3>
+          <div id="suiviTickets"></div>
+        </div>
       </section>
     </main>
 
     <script>
       window.__SAU_APP_READY = false;
       window.__SAU_APP_ERROR = "";
-      window.addEventListener("load", () => {
-        setTimeout(() => {
+      window.addEventListener("error", function (event) {
+        if (!window.__SAU_APP_ERROR) {
+          window.__SAU_APP_ERROR = (event && event.message) ? event.message : "Erreur JavaScript";
+        }
+      });
+      window.addEventListener("load", function () {
+        setTimeout(function () {
           if (window.__SAU_APP_READY) return;
-          const warning = document.getElementById("appLoadWarning");
+          var warning = document.getElementById("appLoadWarning");
           if (warning) {
             warning.style.display = "block";
             if (window.__SAU_APP_ERROR) {
-              const details = document.createElement("p");
+              var details = document.createElement("p");
               details.className = "muted-text";
-              details.textContent = `Detail: ${window.__SAU_APP_ERROR}`;
+              details.textContent = "Detail: " + window.__SAU_APP_ERROR;
               warning.appendChild(details);
             }
           }
         }, 1200);
       });
     </script>
-    <script type="module">
-      import("./js/main.js")
-        .then(() => {
-          window.__SAU_APP_READY = true;
-        })
-        .catch((error) => {
-          window.__SAU_APP_ERROR = error?.message || String(error);
-          console.error("Echec du chargement de l'app:", error);
-        });
-    </script>
+    <script type="module" src="./js/main.js?v=20260419-1"></script>
   </body>
 </html>

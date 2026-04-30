@@ -84,12 +84,28 @@ export function createPlanningItem(sectorId = "", defaults = {}) {
   };
 }
 
+export function createTicket(itemLabel, sectorName, categoryName, groupName, comment = "") {
+  return {
+    id: createId(),
+    itemLabel,
+    sectorName,
+    categoryName,
+    groupName,
+    comment,
+    notes: [],
+    createdAt: new Date().toISOString(),
+    status: "ouvert",
+    closedAt: "",
+  };
+}
+
 export function createChecklistItem(label = "") {
   return {
     id: createId(),
     label,
     status: "",
     comment: "",
+    consumable: false,
     done: false,
     photoDataUrl: "",
     updatedAt: new Date().toISOString(),
@@ -103,6 +119,7 @@ export const state = {
     date: new Date().toISOString().slice(0, 10),
     owner: "",
     notes: "",
+    items: [],
   },
   templates: createDefaultTemplates(),
   activeTemplate: {
@@ -125,6 +142,7 @@ export const state = {
     signedAt: "",
   },
   photos: [],
+  tickets: [],
 };
 
 let saveHook = null;
@@ -156,7 +174,7 @@ export function loadState() {
     if (parsed && typeof parsed === "object") {
       Object.assign(state, parsed);
     }
-  } catch {
+  } catch (error) {
     localStorage.removeItem(STORAGE_KEY);
   }
 
@@ -216,6 +234,17 @@ export function loadState() {
   if (!state.activeChecklist || typeof state.activeChecklist !== "object") {
     state.activeChecklist = { sectorId: "", categoryId: "", itemSubcategoryId: "", planningId: "" };
   }
+
+  if (!state.day || typeof state.day !== "object") {
+    state.day = { date: new Date().toISOString().slice(0, 10), owner: "", notes: "", items: [] };
+  }
+  if (!Array.isArray(state.day.items)) state.day.items = [];
+  state.day.items = state.day.items.map((item) => ({
+    id: item?.id || createId(),
+    label: item?.label || "",
+    done: Boolean(item?.done),
+    createdAt: item?.createdAt || new Date().toISOString(),
+  })).filter((item) => item.label.trim().length > 0);
 
   if (!Array.isArray(state.planning)) state.planning = [];
   if (!state.checklistData || typeof state.checklistData !== "object") state.checklistData = {};

@@ -1,6 +1,7 @@
 import {
   state,
   createChecklistItem,
+  createTicket,
   ensureActiveChecklist,
   getSectorById,
   getCategoryById,
@@ -12,6 +13,7 @@ import { getPlannedSectors, getPlanningBySector, validatePlanning } from "./plan
 
 let rerenderAll = () => {};
 let checklistStep = "sector";
+const openCommentItemIds = new Set();
 
 export function setChecklistRenderHook(fn) {
   rerenderAll = fn;
@@ -63,13 +65,81 @@ function ensureChecklistItems() {
     ...item,
     status: item.status || (item.done ? "valide" : ""),
     comment: item.comment || "",
+    consumable: Boolean(item.consumable),
     photoDataUrl: item.photoDataUrl || "",
     updatedAt: item.updatedAt || new Date().toISOString(),
   }));
   return state.checklistData[key];
 }
 
-function collectSectorAnomalies(planId, sector) {
+function collectPlanConsumables(planId, sector) {
+  if (!planId || !sector) return [];
+
+  const consumables = [];
+  sector.categories.forEach((category) => {
+    category.itemSubcategories.forEach((group) => {
+      const key = `${planId}::${category.id}::${group.id}`;
+      const items = Array.isArray(state.checklistData[key]) ? state.checklistData[key] : [];
+      items.filter((item) => item.consumable).forEach((item) => {
+        consumables.push({
+          itemId: item.id,
+          label: item.label,
+          category: category.name,
+          group: group.name,
+        });
+      });
+    });
+  });
+
+  return consumables;
+}
+
+function renderConsumablesList(container, countNode, consumables) {
+  if (countNode) {
+    countNode.textContent = String(consumables.length);
+  }
+  if (!container) return;
+
+  container.innerHTML = "";
+  if (consumables.length === 0) {
+    container.innerHTML = '<p class="muted-text">Aucun consommable a reassort.</p>';
+    return;
+  }
+
+  consumables.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "restock-item";
+    row.innerHTML = `
+      <div class="restock-item-copy">
+        <strong>${escapeHtml(entry.label)}</strong>
+        <small>${escapeHtml(entry.category)} / ${escapeHtml(entry.group)}</small>
+      </div>
+      <button type="button" class="secondary-btn icon-btn" data-remove-consumable-id="${entry.itemId}" title="Retirer du reassort">✕</button>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function updatePlanItem(planId, sector, itemId, updater) {
+  if (!planId || !sector || !itemId || typeof updater !== "function") return false;
+
+  for (const category of sector.categories) {
+    for (const group of category.itemSubcategories) {
+      const key = `${planId}::${category.id}::${group.id}`;
+      const items = Array.isArray(state.checklistData[key]) ? state.checklistData[key] : null;
+      if (!items) continue;
+      const item = items.find((entry) => entry.id === itemId);
+      if (!item) continue;
+      updater(item);
+      item.updatedAt = new Date().toISOString();
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function collectSectorAnomalies(planId, sector) {
   if (!planId || !sector) return [];
   const anomalies = [];
 
@@ -154,7 +224,7 @@ function normalizedStatus(item) {
   return item?.done ? "valide" : "";
 }
 
-function getGroupProgress(planId, categoryId, group) {
+export function getGroupProgress(planId, categoryId, group) {
   const key = `${planId}::${categoryId}::${group.id}`;
   const savedItems = Array.isArray(state.checklistData[key]) ? state.checklistData[key] : null;
   const sourceItems = savedItems || (Array.isArray(group.items) ? group.items.map((item) => ({ ...item, status: "" })) : []);
@@ -178,6 +248,34 @@ function setChecklistStep(step) {
   checklistStep = step;
 }
 
+function persistChecklistProgress() {
+  const plan = getCurrentPlan();
+  if (!plan) {
+    saveState();
+    return;
+  }
+
+  const sectorMeta = getMetaObject(getSectorMetaKey(plan.id));
+  if (dom.sectorGeneralComment instanceof HTMLTextAreaElement) {
+    sectorMeta.comment = dom.sectorGeneralComment.value;
+  }
+
+  if (state.activeChecklist.categoryId) {
+    const categoryMeta = getMetaObject(getCategoryMetaKey(plan.id, state.activeChecklist.categoryId));
+    if (dom.categoryComment instanceof HTMLTextAreaElement) {
+      categoryMeta.comment = dom.categoryComment.value;
+    }
+  }
+
+  if (state.activeChecklist.categoryId && state.activeChecklist.itemSubcategoryId) {
+    ensureChecklistItems().forEach((item) => {
+      item.updatedAt = item.updatedAt || new Date().toISOString();
+    });
+  }
+
+  saveState();
+}
+
 function applyChecklistStepVisibility() {
   dom.checklistSectorStep.classList.toggle("is-hidden", checklistStep !== "sector");
   dom.checklistCategoryStep.classList.toggle("is-hidden", checklistStep !== "category");
@@ -198,7 +296,7 @@ export function renderChecklist() {
     dom.todaySectorsList.innerHTML = '<p class="muted-text">Aucune verification planifiee.</p>';
     dom.plannedCategoriesList.innerHTML = "";
     dom.itemSubcategoryList.innerHTML = "";
-    dom.subChecklistBody.innerHTML = '<tr><td colspan="4">Aucune checklist active.</td></tr>';
+    dom.subChecklistBody.innerHTML = '<p class="muted-text">Aucune checklist active.</p>';
     dom.subChecklistCompletionText.textContent = "0 valide, 0 non valide sur 0";
     dom.sectorValidationStatus.textContent = "Aucune validation secteur.";
     dom.sectorGeneralComment.value = "";
@@ -236,7 +334,7 @@ export function renderChecklist() {
     applyChecklistStepVisibility();
     dom.plannedCategoriesList.innerHTML = "";
     dom.itemSubcategoryList.innerHTML = "";
-    dom.subChecklistBody.innerHTML = '<tr><td colspan="4">Aucune checklist active.</td></tr>';
+    dom.subChecklistBody.innerHTML = '<p class="muted-text">Aucune checklist active.</p>';
     return;
   }
 
@@ -255,6 +353,11 @@ export function renderChecklist() {
     : "En attente de validation secteur.";
   dom.sectorGeneralComment.value = sectorMeta.comment || "";
   renderAnomalyList(dom.sectorAnomalies, collectSectorAnomalies(plan?.id || "", sector), "Aucune anomalie secteur.");
+  renderConsumablesList(
+    dom.sectorConsumablesList,
+    dom.sectorConsumablesCount,
+    collectPlanConsumables(plan?.id || "", sector),
+  );
 
   sector.categories.forEach((category) => {
     const progress = getCategoryProgress(plan?.id || "", category);
@@ -336,48 +439,75 @@ export function renderChecklist() {
   const items = ensureChecklistItems();
   dom.subChecklistBody.innerHTML = "";
 
+  const tickets = Array.isArray(state.tickets) ? state.tickets : [];
+  const sectorNameForTickets = sector?.name || "";
+  const categoryNameForTickets = category?.name || "";
+  const groupNameForTickets = group?.name || "";
+
   if (items.length === 0) {
-    dom.subChecklistBody.innerHTML = '<tr><td colspan="4">Aucun item.</td></tr>';
+    dom.subChecklistBody.innerHTML = '<p class="muted-text">Aucun item.</p>';
   } else {
     items.forEach((item) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>
-          <div class="validation-toggle" role="group" aria-label="Validation item">
-            <button
-              type="button"
-              class="validation-btn validation-yes ${item.status === "valide" ? "is-active" : ""}"
-              data-set-status-id="${item.id}"
-              data-status-value="valide"
-              title="Valide"
-            >
-              ✓
-            </button>
-            <button
-              type="button"
-              class="validation-btn validation-no ${item.status === "non-valide" ? "is-active" : ""}"
-              data-set-status-id="${item.id}"
-              data-status-value="non-valide"
-              title="Non valide"
-            >
-              ✕
-            </button>
+      const article = document.createElement("article");
+      const commentOpen = openCommentItemIds.has(item.id);
+      const hasComment = item.comment.trim().length > 0;
+      const openTicket = tickets.find(
+        (t) => t.status === "ouvert" && t.itemLabel === item.label && t.sectorName === sectorNameForTickets,
+      );
+      article.className = "checklist-list-item";
+      article.innerHTML = `
+        <div class="checklist-list-main">
+          <div class="checklist-list-head">
+            <div class="validation-toggle" role="group" aria-label="Validation item">
+              <button
+                type="button"
+                class="validation-btn validation-yes ${item.status === "valide" ? "is-active" : ""}"
+                data-set-status-id="${item.id}"
+                data-status-value="valide"
+                title="Valide"
+              >
+                ✓
+              </button>
+              <button
+                type="button"
+                class="validation-btn validation-no ${item.status === "non-valide" ? "is-active" : ""}"
+                data-set-status-id="${item.id}"
+                data-status-value="non-valide"
+                title="Non valide"
+              >
+                ✕
+              </button>
+            </div>
+            <div class="checklist-list-content">
+              <div class="checklist-item-label">
+                ${escapeHtml(item.label)}
+                ${openTicket ? `<span class="ticket-badge" title="Ticket ouvert depuis le ${new Date(openTicket.createdAt).toLocaleDateString("fr-FR")}">🎫 Ticket ouvert</span>` : ""}
+              </div>
+              ${hasComment && !commentOpen ? `<div class="comment-preview">${escapeHtml(item.comment)}</div>` : ""}
+            </div>
           </div>
-        </td>
-        <td>${escapeHtml(item.label)}</td>
-        <td><textarea class="item-comment" rows="1" data-item-id="${item.id}" data-field="comment">${escapeHtml(item.comment)}</textarea></td>
-        <td>
-          <div class="item-photo-actions">
-            <label class="photo-input-label" title="Ajouter photo">
-              <input type="file" accept="image/*" capture="environment" data-photo-item-id="${item.id}" />
-              📷
-            </label>
-            ${item.photoDataUrl ? `<img src="${item.photoDataUrl}" class="item-photo-preview" alt="Photo" />` : ""}
-            ${item.photoDataUrl ? `<button type="button" class="secondary-btn" data-remove-photo-id="${item.id}">✕</button>` : ""}
+          <div class="checklist-item-tools">
+            <button type="button" class="secondary-btn item-action-btn ${commentOpen || hasComment ? "is-active" : ""}" data-toggle-comment-id="${item.id}">
+              Commentaire
+            </button>
+            <button type="button" class="secondary-btn item-action-btn ${item.consumable ? "is-active" : ""}" data-toggle-consumable-id="${item.id}">
+              Consommable
+            </button>
+            ${item.status === "non-valide" && !openTicket ? `<button type="button" class="secondary-btn item-action-btn item-action-btn--ticket" data-create-ticket-id="${item.id}" title="Creer un ticket de suivi">Creer ticket</button>` : ""}
+            ${openTicket ? `<span class="item-ticket-ref">Ticket #${openTicket.id.slice(0, 6)}</span>` : ""}
+            <div class="item-photo-actions">
+              <label class="photo-input-label" title="Ajouter photo">
+                <input type="file" accept="image/*" capture="environment" data-photo-item-id="${item.id}" />
+                📷
+              </label>
+              ${item.photoDataUrl ? `<img src="${item.photoDataUrl}" class="item-photo-preview" alt="Photo" />` : ""}
+              ${item.photoDataUrl ? `<button type="button" class="secondary-btn icon-btn" data-remove-photo-id="${item.id}">✕</button>` : ""}
+            </div>
           </div>
-        </td>
+        </div>
+        ${commentOpen ? `<div class="checklist-comment-panel"><textarea class="item-comment" rows="2" data-item-id="${item.id}" data-field="comment" placeholder="Commentaire">${escapeHtml(item.comment)}</textarea></div>` : ""}
       `;
-      dom.subChecklistBody.appendChild(tr);
+      dom.subChecklistBody.appendChild(article);
     });
   }
 
@@ -392,13 +522,13 @@ export function bindChecklistEvents() {
     if (!(target instanceof HTMLElement)) return;
     const button = target.closest("button[data-sector-id]");
     if (!button) return;
+    persistChecklistProgress();
     state.activeChecklist.sectorId = button.getAttribute("data-sector-id") || "";
     state.activeChecklist.planningId = "";
     state.activeChecklist.categoryId = "";
     state.activeChecklist.itemSubcategoryId = "";
     setChecklistStep("category");
     renderChecklist();
-    saveState();
   });
 
   dom.plannedCategoriesList.addEventListener("click", (event) => {
@@ -406,11 +536,11 @@ export function bindChecklistEvents() {
     if (!(target instanceof HTMLElement)) return;
     const button = target.closest("button[data-category-id]");
     if (!button) return;
+    persistChecklistProgress();
     state.activeChecklist.categoryId = button.getAttribute("data-category-id") || "";
     state.activeChecklist.itemSubcategoryId = "";
     setChecklistStep("itemSubcategory");
     renderChecklist();
-    saveState();
   });
 
   dom.itemSubcategoryList.addEventListener("click", (event) => {
@@ -418,31 +548,31 @@ export function bindChecklistEvents() {
     if (!(target instanceof HTMLElement)) return;
     const button = target.closest("button[data-item-subcategory-id]");
     if (!button) return;
+    persistChecklistProgress();
     state.activeChecklist.itemSubcategoryId = button.getAttribute("data-item-subcategory-id") || "";
     setChecklistStep("items");
     renderChecklist();
-    saveState();
   });
 
   dom.backToSectorsBtn.addEventListener("click", () => {
+    persistChecklistProgress();
     state.activeChecklist.categoryId = "";
     state.activeChecklist.itemSubcategoryId = "";
     setChecklistStep("sector");
     renderChecklist();
-    saveState();
   });
 
   dom.backToCategoriesBtn.addEventListener("click", () => {
+    persistChecklistProgress();
     state.activeChecklist.itemSubcategoryId = "";
     setChecklistStep("category");
     renderChecklist();
-    saveState();
   });
 
   dom.backToItemSubcategoriesBtn.addEventListener("click", () => {
+    persistChecklistProgress();
     setChecklistStep("itemSubcategory");
     renderChecklist();
-    saveState();
   });
 
   dom.validateSectorBtn.addEventListener("click", () => {
@@ -536,7 +666,81 @@ export function bindChecklistEvents() {
       item.updatedAt = new Date().toISOString();
       renderChecklist();
       saveState();
+      return;
     }
+
+    const toggleCommentId = target.getAttribute("data-toggle-comment-id");
+    if (toggleCommentId) {
+      if (openCommentItemIds.has(toggleCommentId)) {
+        openCommentItemIds.delete(toggleCommentId);
+      } else {
+        openCommentItemIds.add(toggleCommentId);
+      }
+      renderChecklist();
+      return;
+    }
+
+    const toggleConsumableId = target.getAttribute("data-toggle-consumable-id");
+    if (toggleConsumableId) {
+      const items = ensureChecklistItems();
+      const item = items.find((entry) => entry.id === toggleConsumableId);
+      if (!item) return;
+      item.consumable = !item.consumable;
+      item.updatedAt = new Date().toISOString();
+      renderChecklist();
+      saveState();
+      return;
+    }
+
+    const createTicketId = target.getAttribute("data-create-ticket-id");
+    if (createTicketId) {
+      const items = ensureChecklistItems();
+      const item = items.find((entry) => entry.id === createTicketId);
+      if (!item) return;
+      const currentSector = state.activeChecklist.sectorId ? getSectorById(state.activeChecklist.sectorId) : null;
+      const currentCategory = state.activeChecklist.categoryId
+        ? getCategoryById(state.activeChecklist.sectorId, state.activeChecklist.categoryId)
+        : null;
+      const currentGroup = state.activeChecklist.itemSubcategoryId
+        ? getItemSubcategoryById(
+            state.activeChecklist.sectorId,
+            state.activeChecklist.categoryId,
+            state.activeChecklist.itemSubcategoryId,
+          )
+        : null;
+      if (!Array.isArray(state.tickets)) state.tickets = [];
+      state.tickets.push(
+        createTicket(
+          item.label,
+          currentSector?.name || "",
+          currentCategory?.name || "",
+          currentGroup?.name || "",
+          item.comment,
+        ),
+      );
+      renderChecklist();
+      saveState();
+      return;
+    }
+  });
+
+  dom.sectorConsumablesList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const removeConsumableId = target.getAttribute("data-remove-consumable-id");
+    if (!removeConsumableId) return;
+
+    const plan = getCurrentPlan();
+    const sector = state.activeChecklist.sectorId ? getSectorById(state.activeChecklist.sectorId) : null;
+    if (!plan || !sector) return;
+
+    const updated = updatePlanItem(plan.id, sector, removeConsumableId, (item) => {
+      item.consumable = false;
+    });
+    if (!updated) return;
+
+    renderChecklist();
+    saveState();
   });
 
   // Navigation rapide vers les sous-catégories (affichée à l'étape itemSubcategory)
@@ -545,11 +749,11 @@ export function bindChecklistEvents() {
     if (!(target instanceof HTMLElement)) return;
     const button = target.closest("button[data-category-id]");
     if (!button) return;
+    persistChecklistProgress();
     state.activeChecklist.categoryId = button.getAttribute("data-category-id") || "";
     state.activeChecklist.itemSubcategoryId = "";
     setChecklistStep("itemSubcategory");
     renderChecklist();
-    saveState();
   });
 
   // Navigation rapide vers les sous-catégories (affichée à l'étape items)
@@ -558,11 +762,11 @@ export function bindChecklistEvents() {
     if (!(target instanceof HTMLElement)) return;
     const button = target.closest("button[data-category-id]");
     if (!button) return;
+    persistChecklistProgress();
     state.activeChecklist.categoryId = button.getAttribute("data-category-id") || "";
     state.activeChecklist.itemSubcategoryId = "";
     setChecklistStep("itemSubcategory");
     renderChecklist();
-    saveState();
   });
 
   // Navigation rapide vers les sous-sous-catégories (affichée à l'étape items)
@@ -571,10 +775,10 @@ export function bindChecklistEvents() {
     if (!(target instanceof HTMLElement)) return;
     const button = target.closest("button[data-item-subcategory-id]");
     if (!button) return;
+    persistChecklistProgress();
     state.activeChecklist.itemSubcategoryId = button.getAttribute("data-item-subcategory-id") || "";
     setChecklistStep("items");
     renderChecklist();
-    saveState();
   });
 }
 

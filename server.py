@@ -1,35 +1,43 @@
 #!/usr/bin/env python3
-"""
-Mini serveur collaboratif pour main-courante
-Permet plusieurs opérateurs de travailler sur les mêmes vérifications
+"""Serveur unique pour l'application main courante.
+
+- Sert les fichiers statiques du projet
+- Expose l'API collaborative sous /api/*
+- Utilise une seule origine pour éviter CORS, mixed content et les problèmes github.dev
 """
 
 import json
 import os
 import sqlite3
+import traceback
 import uuid
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
-DB_FILE = "main-courante.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, "main-courante.db")
+
 
 def init_db():
-    """Initialiser la base de données"""
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, timeout=10)
     cursor = conn.cursor()
-    
-    # Table pour les données principales
-    cursor.execute('''
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS app_state (
             id TEXT PRIMARY KEY,
             data TEXT NOT NULL,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
-    
-    # Table pour les sessions des opérateurs
-    cursor.execute('''
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS operator_sessions (
             session_id TEXT PRIMARY KEY,
             operator_name TEXT NOT NULL,
@@ -37,10 +45,11 @@ def init_db():
             last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
-    
-    # Table pour l'audit (qui a modifié quoi et quand)
-    cursor.execute('''
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
@@ -50,261 +59,262 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             details TEXT
         )
-    ''')
-    
+        """
+    )
+
     conn.commit()
     conn.close()
 
-class RequestHandler(BaseHTTPRequestHandler):
+
+class RequestHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, directory=None, **kwargs):
+        super().__init__(*args, directory=directory or BASE_DIR, **kwargs)
+
+    def end_headers(self):
+        # Eviter les scripts obsoletes en environnement codespaces/navigateurs caches.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def log_message(self, format, *args):
-        """Désactiver les logs par défaut"""
-        pass
-    
-    def _log(self, msg):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] {format % args}")
 
     def _set_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Access-Control-Max-Age", "86400")
-    
-    def _send_json(self, code, data):
-        """Helper pour envoyer JSON"""
-        try:
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self._set_cors_headers()
-            self.end_headers()
-            self.wfile.write(json.dumps(data).encode("utf-8"))
-            self._log(f"GET/POST {self.path} → {code}")
-        except Exception as e:
-            self._log(f"Erreur réponse: {e}")
 
-    def do_OPTIONS(self):
-        """Répondre au preflight CORS"""
-        self.send_response(204)
+    def _send_json(self, code, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
         self._set_cors_headers()
         self.end_headers()
-        self._log(f"OPTIONS {self.path} → 204")
-    
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        if self.path.startswith("/api/"):
+            self.send_response(204)
+            self._set_cors_headers()
+            self.end_headers()
+            return
+        super().do_OPTIONS()
+
     def do_GET(self):
-        """Gérer les requêtes GET"""
-        try:
-            parsed_path = urlparse(self.path)
-            path = parsed_path.path
-            
-            if path == "/api/state":
-                self.get_state()
-            elif path == "/api/operators":
-                self.get_operators()
-            elif path == "/api/audit":
-                self.get_audit()
-            else:
-                self._send_json(404, {"error": "Not Found"})
-        except Exception as e:
-            self._log(f"Erreur GET: {e}")
-            self._send_json(500, {"error": str(e)})
-    
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/"):
+            self._handle_api_get(parsed)
+            return
+
+        if parsed.path == "/":
+            self.path = "/index.html"
+        super().do_GET()
+
     def do_POST(self):
-        """Gérer les requêtes POST"""
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/"):
+            self._send_json(404, {"error": "Not Found"})
+            return
+        self._handle_api_post(parsed)
+
+    def _read_json_body(self):
+        content_length = int(self.headers.get("Content-Length", "0"))
+        raw_body = self.rfile.read(content_length) if content_length > 0 else b"{}"
         try:
-            parsed_path = urlparse(self.path)
-            path = parsed_path.path
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else ""
-            
-            try:
-                data = json.loads(body) if body else {}
-            except json.JSONDecodeError:
-                self._send_json(400, {"error": "Invalid JSON"})
+            return json.loads(raw_body.decode("utf-8"))
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON")
+
+    def _handle_api_get(self, parsed):
+        try:
+            if parsed.path == "/api/state":
+                self._get_state()
                 return
-            
-            if path == "/api/session/register":
-                self.register_session(data)
-            elif path == "/api/state":
-                self.save_state(data)
-            elif path == "/api/audit":
-                self.log_audit(data)
-            else:
-                self._send_json(404, {"error": "Not Found"})
-        except Exception as e:
-            self._log(f"Erreur POST: {e}")
-            self._send_json(500, {"error": str(e)})
-    
-    def get_state(self):
-        """Récupérer l'état complet de l'application"""
+            if parsed.path == "/api/operators":
+                self._get_operators()
+                return
+            if parsed.path == "/api/audit":
+                self._get_audit(parsed)
+                return
+            self._send_json(404, {"error": "Not Found"})
+        except Exception as error:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(error)})
+
+    def _handle_api_post(self, parsed):
         try:
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("SELECT data FROM app_state WHERE id = 'main'")
-            result = cursor.fetchone()
-            conn.close()
-            
-            if result:
-                try:
-                    state = json.loads(result[0])
-                except:
-                    state = {}
-            else:
-                state = {}
-            
-            self._send_json(200, state)
-        except Exception as e:
-            self._log(f"Erreur get_state: {e}")
-            self._send_json(500, {"error": str(e)})
-    
-    def get_operators(self):
-        """Récupérer les opérateurs actifs"""
+            data = self._read_json_body()
+            if parsed.path == "/api/session/register":
+                self._register_session(data)
+                return
+            if parsed.path == "/api/state":
+                self._save_state(data)
+                return
+            if parsed.path == "/api/audit":
+                self._log_audit(data)
+                return
+            self._send_json(404, {"error": "Not Found"})
+        except ValueError as error:
+            self._send_json(400, {"error": str(error)})
+        except Exception as error:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(error)})
+
+    def _get_state(self):
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("SELECT data FROM app_state WHERE id = 'main'")
+        result = cursor.fetchone()
+        conn.close()
+
+        if not result:
+            self._send_json(200, {})
+            return
+
         try:
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT session_id, operator_name, operator_role, last_seen
-                FROM operator_sessions
-                WHERE datetime(last_seen) > datetime('now', '-5 minutes')
-                ORDER BY last_seen DESC
-            ''')
-            operators = cursor.fetchall()
-            conn.close()
-            
-            result = [
-                {
-                    "session_id": op[0],
-                    "name": op[1],
-                    "role": op[2],
-                    "last_seen": op[3]
-                }
-                for op in operators
-            ]
-            
-            self._send_json(200, result)
-        except Exception as e:
-            self._log(f"Erreur get_operators: {e}")
-            self._send_json(500, {"error": str(e)})
-    
-    def get_audit(self):
-        """Récupérer l'historique d'audit"""
-        try:
-            parsed_path = urlparse(self.path)
-            query_params = parse_qs(parsed_path.query)
-            limit = int(query_params.get("limit", [100])[0])
-            
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, session_id, operator_name, action, data_type, timestamp, details
-                FROM audit_log
-                ORDER BY timestamp DESC
-                LIMIT ?
-            ''', (limit,))
-            logs = cursor.fetchall()
-            conn.close()
-            
-            result = [
-                {
-                    "id": log[0],
-                    "session_id": log[1],
-                    "operator_name": log[2],
-                    "action": log[3],
-                    "data_type": log[4],
-                    "timestamp": log[5],
-                    "details": log[6]
-                }
-                for log in logs
-            ]
-            
-            self._send_json(200, result)
-        except Exception as e:
-            self._log(f"Erreur get_audit: {e}")
-            self._send_json(500, {"error": str(e)})
-    
-    def register_session(self, data):
-        """Enregistrer une session d'opérateur"""
-        try:
-            session_id = str(uuid.uuid4())
-            operator_name = data.get("name", "Opérateur inconnu")
-            operator_role = data.get("role", "")
-            
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO operator_sessions (session_id, operator_name, operator_role)
-                VALUES (?, ?, ?)
-            ''', (session_id, operator_name, operator_role))
-            conn.commit()
-            conn.close()
-            
-            response = {
-                "session_id": session_id,
-                "message": f"Session enregistrée pour {operator_name}"
+            state = json.loads(result[0])
+        except json.JSONDecodeError:
+            state = {}
+        self._send_json(200, state)
+
+    def _get_operators(self):
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT session_id, operator_name, operator_role, last_seen
+            FROM operator_sessions
+            WHERE datetime(last_seen) > datetime('now', '-5 minutes')
+            ORDER BY last_seen DESC
+            """
+        )
+        operators = cursor.fetchall()
+        conn.close()
+
+        payload = [
+            {
+                "session_id": row[0],
+                "name": row[1],
+                "role": row[2],
+                "last_seen": row[3],
             }
-            
-            self._send_json(200, response)
-        except Exception as e:
-            self._log(f"Erreur register_session: {e}")
-            self._send_json(500, {"error": str(e)})
-    
-    def save_state(self, data):
-        """Sauvegarder l'état de l'application"""
-        try:
-            state_data = data.get("state", {})
-            
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT OR REPLACE INTO app_state (id, data, updated_at)
-                VALUES ('main', ?, CURRENT_TIMESTAMP)
-            ''', (json.dumps(state_data),))
-            
-            conn.commit()
-            conn.close()
-            
-            response = {"message": "État sauvegardé avec succès"}
-            self._send_json(200, response)
-        except Exception as e:
-            self._log(f"Erreur save_state: {e}")
-            self._send_json(500, {"error": str(e)})
-    
-    def log_audit(self, data):
-        """Enregistrer une action dans l'audit"""
-        try:
-            session_id = data.get("session_id", "unknown")
-            operator_name = data.get("operator_name", "Inconnu")
-            action = data.get("action", "unknown")
-            data_type = data.get("data_type", "")
-            details = data.get("details", "")
-            
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO audit_log (session_id, operator_name, action, data_type, details)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (session_id, operator_name, action, data_type, details))
-            conn.commit()
-            conn.close()
-            
-            response = {"message": "Action enregistrée"}
-            self._send_json(200, response)
-        except Exception as e:
-            self._log(f"Erreur log_audit: {e}")
-            self._send_json(500, {"error": str(e)})
+            for row in operators
+        ]
+        self._send_json(200, payload)
+
+    def _get_audit(self, parsed):
+        query = parse_qs(parsed.query)
+        limit = int(query.get("limit", [100])[0])
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, session_id, operator_name, action, data_type, timestamp, details
+            FROM audit_log
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        logs = cursor.fetchall()
+        conn.close()
+
+        payload = [
+            {
+                "id": row[0],
+                "session_id": row[1],
+                "operator_name": row[2],
+                "action": row[3],
+                "data_type": row[4],
+                "timestamp": row[5],
+                "details": row[6],
+            }
+            for row in logs
+        ]
+        self._send_json(200, payload)
+
+    def _register_session(self, data):
+        session_id = str(uuid.uuid4())
+        operator_name = data.get("name", "Operateur inconnu")
+        operator_role = data.get("role", "")
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO operator_sessions (session_id, operator_name, operator_role)
+            VALUES (?, ?, ?)
+            """,
+            (session_id, operator_name, operator_role),
+        )
+        conn.commit()
+        conn.close()
+
+        self._send_json(
+            200,
+            {
+                "session_id": session_id,
+                "message": f"Session enregistree pour {operator_name}",
+            },
+        )
+
+    def _save_state(self, data):
+        state_data = data.get("state", {})
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO app_state (id, data, updated_at)
+            VALUES ('main', ?, CURRENT_TIMESTAMP)
+            """,
+            (json.dumps(state_data),),
+        )
+        conn.commit()
+        conn.close()
+
+        self._send_json(200, {"message": "Etat sauvegarde avec succes"})
+
+    def _log_audit(self, data):
+        session_id = data.get("session_id", "unknown")
+        operator_name = data.get("operator_name", "Inconnu")
+        action = data.get("action", "unknown")
+        data_type = data.get("data_type", "")
+        details = data.get("details", "")
+
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO audit_log (session_id, operator_name, action, data_type, details)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (session_id, operator_name, action, data_type, details),
+        )
+        conn.commit()
+        conn.close()
+
+        self._send_json(200, {"message": "Action enregistree"})
 
 
-def run_server(port=8001):
-    """Lancer le serveur"""
+def run_server(port=8000):
     init_db()
-    server_address = ("0.0.0.0", port)
-    httpd = HTTPServer(server_address, RequestHandler)
-    print(f"\n📡 Serveur collaboratif sur port {port}")
-    print(f"   Base de données: {os.path.abspath(DB_FILE)}")
-    print(f"\n   API: http://localhost:{port}/api/{'{'}state,operators,audit{'}'}") 
+    handler = partial(RequestHandler, directory=BASE_DIR)
+    httpd = ThreadingHTTPServer(("0.0.0.0", port), handler)
+    print(f"\nServeur unique demarre sur http://0.0.0.0:{port}")
+    print(f"Base de donnees: {DB_FILE}")
+    print("UI + API sur la meme origine")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n\n🛑 Serveur arrêté.")
+        print("\nServeur arrete.")
         httpd.shutdown()
 
+
 if __name__ == "__main__":
-    run_server(8001)
+    run_server(8000)

@@ -4,21 +4,7 @@
  */
 
 function detectServerUrl() {
-  const { protocol, hostname, port } = window.location;
-
-  // Environnements GitHub Codespaces: le host encode le port dans le sous-domaine.
-  // Ex: xxx-8000.app.github.dev -> xxx-8001.app.github.dev
-  if (hostname.endsWith(".app.github.dev") && hostname.includes("-8000.")) {
-    return `${protocol}//${hostname.replace("-8000.", "-8001.")}`;
-  }
-
-  // Si l'app est servie en 8000, le service collaboratif est en 8001.
-  if (port === "8000") {
-    return `${protocol}//${hostname}:8001`;
-  }
-
-  // Fallback local/réseau
-  return `${protocol}//${hostname}:8001`;
+  return window.location.origin;
 }
 let SERVER_URL = detectServerUrl();
 let sessionId = null;
@@ -66,10 +52,6 @@ export async function initCollaboration(name, role = "") {
 
     // Démarrer la synchronisation périodique
     startAutoSync();
-
-    // Afficher les opérateurs actifs
-    updateOperatorsList();
-    setInterval(updateOperatorsList, 10000); // Rafraîchir toutes les 10 secondes
 
     return sessionId;
   } catch (error) {
@@ -210,37 +192,7 @@ export async function getAuditLog(limit = 50) {
  * Mettre à jour l'affichage de la liste des opérateurs
  */
 async function updateOperatorsList() {
-  try {
-    const operators = await getActiveOperators();
-    const container = document.getElementById("activeOperators");
-
-    if (!container) return; // L'élément n'existe pas encore
-
-    container.innerHTML = "";
-
-    if (operators.length === 0) {
-      container.innerHTML = '<p class="muted-text">Aucun opérateur actif</p>';
-      return;
-    }
-
-    operators.forEach((op) => {
-      const div = document.createElement("div");
-      div.className = "operator-indicator";
-      const isCurrent = op.session_id === sessionId ? " (vous)" : "";
-      const lastSeen = new Date(op.last_seen).toLocaleTimeString("fr-FR");
-      div.innerHTML = `
-        <span class="operator-dot"></span>
-        <span class="operator-info">
-          <strong>${escapeHtml(op.name)}</strong>
-          ${op.role ? `<small>${escapeHtml(op.role)}</small>` : ""}
-          <small class="operator-time">${lastSeen}${isCurrent}</small>
-        </span>
-      `;
-      container.appendChild(div);
-    });
-  } catch (error) {
-    console.error("Erreur mise à jour opérateurs:", error);
-  }
+  return [];
 }
 
 /**
